@@ -1,0 +1,14 @@
+{
+  "name": "autoparts-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev:client": "npm --prefix client run dev",
+    "dev:seller": "npm --prefix seller run dev",
+    "dev:admin": "npm --prefix admin run dev",
+    "build:client": "npm --prefix client run build",
+    "build:seller": "npm --prefix seller run build",
+    "build:admin": "npm --prefix admin run build"
+  }
+}
+

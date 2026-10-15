@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talel – Inscription vendeur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF1F2;--card:#fff;--ink:#12262B;--mute:#5B6E73;--line:#CBD5D8;--acc:#F2B705;--accink:#12262B;--ok:#1F7A4D;--err:#B3261E;--warn:#8A5A00;--side:#12262B;--sidetx:#DCE6E8}
+@media(prefers-color-scheme:dark){:root{--bg:#0D1A1D;--card:#162A2F;--ink:#E8EFF0;--mute:#93A8AD;--line:#2C444A;--ok:#5FCB92;--err:#FF8A80;--warn:#F2B705;--side:#091316}}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0)}
+body{margin:0;font:16px/1.5 Barlow,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1,h2,.hd{font-family:"Barlow Semi Condensed",Barlow,sans-serif;letter-spacing:.2px}
+.app{display:grid;grid-template-columns:280px 1fr;min-height:100vh;max-width:1100px;margin:auto}
+aside{background:var(--side);color:var(--sidetx);padding:32px 24px}
+aside h1{font-size:28px;margin:0 0 4px;color:#fff}
+aside p{margin:0 0 28px;font-size:14px;opacity:.8}
+.steps{list-style:none;margin:0;padding:0;position:relative}
+.steps li{display:flex;gap:12px;align-items:center;padding:10px 0;font-size:15px;opacity:.6}
+.steps li b{width:28px;height:28px;border-radius:50%;border:2px solid currentColor;display:grid;place-items:center;font-size:13px;flex:none}
+.steps li.on{opacity:1;color:#fff}.steps li.on b{background:var(--acc);border-color:var(--acc);color:var(--accink)}
+.steps li.done{opacity:1}.steps li.done b{background:var(--ok);border-color:var(--ok);color:#fff}
+main{padding:32px 36px 64px}
+h2{font-size:26px;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 24px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px}
+.full{grid-column:1/-1}
+label.l{display:block;font-weight:500;font-size:14px;margin-bottom:4px}
+.req{color:var(--err)}
+input[type=text],input[type=email],input[type=tel],input[type=password],input[type=number],input[type=url],select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
+textarea{min-height:90px;resize:vertical}
+:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
+.bad{border-color:var(--err)!important}
+.msg{color:var(--err);font-size:13px;min-height:0;margin-top:3px}
+.hint{color:var(--mute);font-size:13px;margin-top:3px}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{display:flex;gap:6px;align-items:center;border:1.5px solid var(--line);border-radius:6px;padding:7px 12px;background:var(--card);cursor:pointer;font-size:15px}
+.checks input:checked+span{font-weight:600}
+.ph{display:flex}.ph span{padding:10px 12px;border:1.5px solid var(--line);border-right:0;border-radius:6px 0 0 6px;background:var(--bg);color:var(--mute)}
+.ph input{border-radius:0 6px 6px 0}
+.nav{display:flex;justify-content:space-between;margin-top:32px;gap:12px}
+button{font:600 16px "Barlow Semi Condensed",sans-serif;letter-spacing:.3px;padding:11px 24px;border-radius:6px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+button.p{background:var(--acc);border-color:var(--acc);color:var(--accink)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.s{padding:5px 12px;font-size:14px}
+.doc{border:1.5px solid var(--line);background:var(--card);border-radius:8px;padding:14px 16px;margin-bottom:12px}
+.doc .top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.tag.r{border-color:var(--err);color:var(--err)}
+.file{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.file img,.file .pdf{width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
+.file .pdf{display:grid;place-items:center;font:700 12px "Barlow Semi Condensed";background:var(--bg)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;flex:1;min-width:100px}
+.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .2s}
+.pct{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:6px 0 20px}
+.pct i{display:block;height:100%;background:var(--ok)}
+.box{border:1.5px solid var(--line);background:var(--card);border-radius:8px;padding:16px 18px;margin-bottom:16px}
+.box h3{margin:0 0 8px;font:600 18px "Barlow Semi Condensed"}
+.box ul{margin:0;padding-left:20px}
+.ok{color:var(--ok)}.wn{color:var(--warn)}
+.note{background:var(--card);border-left:4px solid var(--acc);padding:10px 14px;font-size:14px;margin-bottom:20px;border-radius:0 6px 6px 0}
+.st{list-style:none;padding:0;margin:0}.st li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+@media(max-width:800px){.app{grid-template-columns:1fr}aside{padding:20px}.steps{display:flex;gap:4px;overflow-x:auto}.steps li span{display:none}.steps li.on span{display:inline}aside p{display:none}main{padding:24px 16px 48px}.grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <h1 class="hd">Talel</h1>
+  <p>Inscription vendeur de pièces automobiles</p>
+  <ol class="steps" id="steps"></ol>
+</aside>
+<main id="main" aria-live="polite"></main>
+</div>
+<script>
+/* ---------- Configuration (adapter au backend) ---------- */
+const CFG={
+  apiBase:"/api/seller",          // POST /register (JSON) puis POST /documents/:applicationId (multipart)
+  maxMB:5,                        // taille max par fichier
+  addressProofRequired:false,
+  termsUrl:"/conditions-generales",
+  privacyUrl:"/confidentialite"
+};
+/* Règles configurables par statut juridique : RNE / identifiant fiscal exigés ? */
+const RULES={
+  "Personne physique":{rne:false,tax:true},
+  "Entreprise individuelle":{rne:true,tax:true},
+  "SUARL":{rne:true,tax:true},
+  "SARL":{rne:true,tax:true},
+  "Autre":{rne:false,tax:false}
+};
+const GOV=["Ariana","Béja","Ben Arous","Bizerte","Gabès","Gafsa","Jendouba","Kairouan","Kasserine","Kébili","Kef","Mahdia","Manouba","Médenine","Monastir","Nabeul","Sfax","Sidi Bouzid","Siliana","Sousse","Tataouine","Tozeur","Tunis","Zaghouan"];
+const REQ_RNE=d=>RULES[d.legal_form]?.rne, REQ_TAX=d=>RULES[d.legal_form]?.tax;
+
+/* ---------- Définition des champs ---------- */
+const STEPS=[
+{t:"Compte et représentant",s:"Les informations de la personne qui gère le compte.",f:[
+ {id:"first",l:"Prénom",req:1},{id:"last",l:"Nom",req:1},
+ {id:"email",l:"E-mail professionnel",type:"email",req:1,full:1,hint:"Un e-mail de vérification vous sera envoyé."},
+ {id:"phone",l:"Téléphone mobile",type:"tel",req:1,ph:1,hint:"8 chiffres. Un code SMS pourra être demandé."},
+ {id:"role",l:"Rôle du représentant",type:"select",opts:["Propriétaire","Gérant","Représentant autorisé","Autre"],req:1},
+ {id:"pw",l:"Mot de passe",type:"password",req:1,hint:"10 caractères minimum, avec lettres et chiffres."},
+ {id:"pw2",l:"Confirmer le mot de passe",type:"password",req:1}]},
+{t:"Informations de l'entreprise",s:"Les champs RNE et identifiant fiscal dépendent de votre statut juridique.",f:[
+ {id:"legal_name",l:"Raison sociale",req:1},{id:"commercial_name",l:"Nom commercial",req:1},
+ {id:"legal_form",l:"Statut juridique",type:"select",opts:Object.keys(RULES),req:1},
+ {id:"rne",l:"Numéro RNE",req:REQ_RNE,hint:"Registre National des Entreprises, si applicable."},
+ {id:"tax",l:"Identifiant fiscal",req:REQ_TAX,hint:"Ex. 1234567A ou 1234567/A/M/000"},
+ {id:"biz_phone",l:"Téléphone professionnel",type:"tel",req:1,ph:1},
+ {id:"address",l:"Adresse professionnelle",req:1,full:1},
+ {id:"governorate",l:"Gouvernorat",type:"select",opts:GOV,req:1},{id:"city",l:"Ville",req:1},
+ {id:"postal",l:"Code postal",req:1,hint:"4 chiffres"},
+ {id:"biz_email",l:"E-mail professionnel de l'entreprise",type:"email",req:1},
+ {id:"stores",l:"Nombre de points de vente (optionnel)",type:"number"},
+ {id:"shop_name",l:"Nom de l'enseigne (optionnel)"},
+ {id:"website",l:"Site web ou page professionnelle (optionnel)",type:"url",full:1}]},
+{t:"Activité pièces automobiles",s:"Ce que vous vendez et comment.",f:[
+ {id:"categories",l:"Catégories",type:"checks",opts:["Mécanique","Carrosserie","Électrique","Filtres","Pneus","Lubrifiants","Accessoires","Autre"],req:1,full:1},
+ {id:"condition",l:"Produits vendus",type:"select",opts:["Neufs","Occasion","Les deux"],req:1},
+ {id:"sales",l:"Type de vente",type:"select",opts:["Détail","Gros","Détail et gros"],req:1},
+ {id:"brands",l:"Marques de véhicules prises en charge",req:1,full:1,hint:"Séparées par des virgules : Renault, Peugeot, Kia…"},
+ {id:"location",l:"Lieu d'activité",type:"select",opts:["Magasin physique","Entrepôt","En ligne uniquement","Plusieurs lieux"],req:1},
+ {id:"years",l:"Années d'expérience (optionnel)",type:"number"},
+ {id:"desc",l:"Description de l'activité (optionnel)",type:"textarea",full:1}]}
+];
+const DOCS=[
+ {k:"rne",l:"Extrait du registre RNE",req:d=>REQ_RNE(d)},
+ {k:"tax",l:"Document d'identifiant fiscal",req:d=>REQ_TAX(d)},
+ {k:"addr",l:"Justificatif d'adresse professionnelle",req:()=>CFG.addressProofRequired},
+ {k:"auth",l:"Autorisation ou preuve de représentation",req:d=>d.role&&d.role!=="Propriétaire"},
+ {k:"front",l:"Photo de la devanture",img:1},{k:"inside",l:"Photo de l'intérieur du magasin",img:1},
+ {k:"stock",l:"Photo du stock ou de l'entrepôt",img:1},{k:"logo",l:"Logo de l'entreprise",img:1}
+];
+
+/* ---------- État (aucune donnée persistée dans le navigateur) ---------- */
+let step=0,D={categories:[]},F={},E={},appId=null,submitted=null,busy=false;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const isReq=(f)=>typeof f.req==="function"?!!f.req(D):!!f.req;
+
+/* ---------- Validation ---------- */
+const V={
+ email:v=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)||"Adresse e-mail invalide.",
+ tel:v=>/^[234579]\d{7}$/.test(v.replace(/[\s.-]/g,""))||"Numéro tunisien invalide (8 chiffres, ex. 22 123 456).",
+ url:v=>/^https?:\/\/\S+\.\S+/.test(v)||"Adresse invalide (commencez par https://).",
+ number:v=>(/^\d+$/.test(v)&&+v>=0&&+v<=200)||"Nombre invalide."
+};
+function checkField(f){
+ const v=(D[f.id]??"")+"";const arr=Array.isArray(D[f.id]);
+ if(arr?!D[f.id].length:!v.trim()) return isReq(f)?"Champ obligatoire.":null;
+ if(f.ph) return V.tel(v);
+ if(V[f.type]) return V[f.type](v);
+ if(f.id==="pw") return (v.length>=10&&/[A-Za-z]/.test(v)&&/\d/.test(v))||"10 caractères minimum, avec lettres et chiffres.";
+ if(f.id==="pw2") return v===D.pw||"Les mots de passe ne correspondent pas.";
+ if(f.id==="postal") return /^\d{4}$/.test(v)||"Code postal à 4 chiffres.";
+ if(f.id==="tax") return /^\d{7}\s?\/?\s?[A-Za-z]/.test(v)||"Format attendu : 7 chiffres suivis d'une lettre.";
+ if(f.id==="rne") return /^[A-Za-z0-9\s\/-]{6,20}$/.test(v)||"Numéro RNE invalide.";
+ return null;
+}
+const stepFields=i=>STEPS[i].f;
+function validateStep(i){
+ E={};stepFields(i).forEach(f=>{const m=checkField(f);if(m)E[f.id]=m});
+ if(i===3) DOCS.forEach(d=>{if(docReq(d)&&!F[d.k]?.ok)E["doc_"+d.k]="Document obligatoire."});
+ return !Object.keys(E).length;
+}
+const docReq=d=>typeof d.req==="function"?!!d.req(D):!!d.req;
+
+/* ---------- Fichiers : signature réelle, taille, PDF intact ---------- */
+async function inspect(file){
+ if(file.size>CFG.maxMB*1048576) return {err:`Fichier trop lourd (max ${CFG.maxMB} Mo).`};
+ if(!file.size) return {err:"Fichier vide."};
+ const b=new Uint8Array(await file.slice(0,12).arrayBuffer());
+ const is=(...a)=>a.every((x,i)=>b[i]===x);
+ if(is(0x4D,0x5A)||is(0x7F,0x45,0x4C,0x46)||is(0x23,0x21)) return {err:"Fichier exécutable refusé."};
+ if(is(0x25,0x50,0x44,0x46)){
+  const t=new TextDecoder("latin1").decode(await file.slice(-1024).arrayBuffer());
+  if(!t.includes("%%EOF")) return {err:"PDF corrompu ou incomplet."};
+  return {mime:"application/pdf"};
+ }
+ if(is(0xFF,0xD8,0xFF)) return {mime:"image/jpeg"};
+ if(is(0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A)) return {mime:"image/png"};
+ if(is(0x52,0x49,0x46,0x46)&&b[8]===0x57&&b[9]===0x45&&b[10]===0x42&&b[11]===0x50) return {mime:"image/webp"};
+ return {err:"Format non pris en charge (PDF, JPEG, PNG ou WebP)."};
+}
+async function pick(k,file){
+ if(!file)return;
+ const d=DOCS.find(x=>x.k===k),r=await inspect(file);
+ if(!r.err&&d.img&&r.mime==="application/pdf") r.err="Une image est attendue pour ce document.";
+ if(F[k]?.url)URL.revokeObjectURL(F[k].url);
+ F[k]=r.err?{err:r.err,name:file.name}:{file,mime:r.mime,ok:1,name:file.name,url:r.mime.startsWith("image")?URL.createObjectURL(file):null,state:"prêt"};
+ delete E["doc_"+k];render();
+}
+
+/* ---------- Complétude ---------- */
+function missing(){
+ const f=[];STEPS.forEach((s,i)=>s.f.forEach(x=>{if(checkField(x))f.push(x.l.replace(" (optionnel)",""))}));
+ const d=DOCS.filter(x=>docReq(x)&&!F[x.k]?.ok).map(x=>x.l);
+ return {f,d};
+}
+function percent(){
+ let tot=0,ok=0;
+ STEPS.forEach(s=>s.f.forEach(x=>{if(isReq(x)){tot++;if(!checkField(x))ok++}}));
+ DOCS.forEach(x=>{if(docReq(x)){tot++;if(F[x.k]?.ok)ok++}});
+ return tot?Math.round(ok/tot*100):0;
+}
+
+/* ---------- Rendu ---------- */
+function renderSteps(){
+ const names=["Compte","Entreprise","Activité","Documents","Vérification"];
+ $("#steps").innerHTML=names.map((n,i)=>`<li class="${i===step?"on":i<step||submitted?"done":""}"><b>${i<step||submitted?"✓":i+1}</b><span>${n}</span></li>`).join("");
+}
+function fieldHTML(f){
+ const v=D[f.id]??"",e=E[f.id],id="f_"+f.id,bad=e?" bad":"";
+ let inp;
+ if(f.type==="select") inp=`<select id="${id}" data-id="${f.id}" class="${bad}"><option value="">Choisir…</option>${f.opts.map(o=>`<option${o===v?" selected":""}>${esc(o)}</option>`).join("")}</select>`;
+ else if(f.type==="textarea") inp=`<textarea id="${id}" data-id="${f.id}" maxlength="1000">${esc(v)}</textarea>`;
+ else if(f.type==="checks") inp=`<div class="checks" role="group" aria-labelledby="${id}l">${f.opts.map(o=>`<label><input type="checkbox" data-chk="${f.id}" value="${esc(o)}"${(v||[]).includes(o)?" checked":""}><span>${esc(o)}</span></label>`).join("")}</div>`;
+ else if(f.ph) inp=`<div class="ph"><span>+216</span><input type="tel" id="${id}" data-id="${f.id}" value="${esc(v)}" inputmode="numeric" autocomplete="tel-national" class="${bad}"></div>`;
+ else inp=`<input type="${f.type||"text"}" id="${id}" data-id="${f.id}" value="${esc(v)}" class="${bad}"${f.type==="password"?' autocomplete="new-password"':""}>`;
+ return `<div class="${f.full?"full":""}"><label class="l" id="${id}l" for="${id}">${esc(f.l)}${isReq(f)?' <span class="req" aria-hidden="true">*</span>':""}</label>${inp}${e?`<div class="msg" role="alert">${esc(e)}</div>`:f.hint?`<div class="hint">${esc(f.hint)}</div>`:""}</div>`;
+}
+function docHTML(d){
+ const x=F[d.k],r=docReq(d),e=E["doc_"+d.k];
+ return `<div class="doc"><div class="top"><span><b>${esc(d.l)}</b> <span class="tag${r?" r":""}">${r?"Requis":"Optionnel"}</span></span>
+ <label class="s"><input type="file" data-doc="${d.k}" accept="${d.img?"image/jpeg,image/png,image/webp":"application/pdf,image/jpeg,image/png,image/webp"}" ${x?.ok?'aria-label="Remplacer"':""}></label></div>
+ ${x?.ok?`<div class="file">${x.url?`<img src="${x.url}" alt="Aperçu">`:'<div class="pdf">PDF</div>'}<div style="flex:1;min-width:140px"><div style="font-size:14px;word-break:break-all">${esc(x.name)} · ${(x.file.size/1048576).toFixed(2)} Mo</div><div class="bar"><i id="bar_${d.k}" style="width:${x.pct||0}%"></i></div><div class="hint" id="st_${d.k}">${esc(x.state)}</div></div>
+ <button class="s" data-rm="${d.k}">Retirer</button>${x.state==="échec"?`<button class="s" data-retry="1">Réessayer</button>`:""}</div>`:""}
+ ${x?.err?`<div class="msg" role="alert">${esc(x.err)}</div>`:""}${e&&!x?.err?`<div class="msg" role="alert">${esc(e)}</div>`:""}</div>`;
+}
+function reviewHTML(){
+ const p=percent(),m=missing(),chk=[
+  ["Informations du compte",!m.f.some(n=>STEPS[0].f.some(f=>f.l===n))],
+  ["Informations de l'entreprise",!m.f.some(n=>STEPS[1].f.some(f=>f.l===n))],
+  ["Activité renseignée",!m.f.some(n=>STEPS[2].f.some(f=>f.l===n))],
+  ["Documents obligatoires reçus",!m.d.length]];
+ return `<h2 class="hd">Vérification et envoi</h2><p class="sub">Relisez votre dossier avant de l'envoyer.</p>
+ <div><b>Dossier complété à ${p} %</b></div><div class="pct" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100"><i style="width:${p}%"></i></div>
+ <div class="box"><h3>Liste de contrôle</h3><ul style="list-style:none;padding:0">${chk.map(c=>`<li class="${c[1]?"ok":"wn"}">${c[1]?"✓":"•"} ${c[0]}</li>`).join("")}</ul></div>
+ ${m.f.length||m.d.length?`<div class="box"><h3>Éléments manquants</h3><ul>${m.f.map(x=>`<li>Champ : ${esc(x)}</li>`).join("")}${m.d.map(x=>`<li>Document : ${esc(x)}</li>`).join("")}</ul></div>`:""}
+ <div class="note">Après l'envoi, votre dossier sera <b>en attente de vérification</b>. Les informations extraites de vos documents vous seront présentées pour confirmation. Votre entreprise n'est considérée comme vérifiée qu'après validation de toutes les étapes obligatoires.</div>
+ <div class="full"><label class="checks"><label><input type="checkbox" id="terms"${D.terms?" checked":""}><span>J'accepte les <a href="${CFG.termsUrl}" target="_blank" rel="noopener">conditions d'utilisation</a>.</span></label></label>${E.terms?`<div class="msg">${E.terms}</div>`:""}
+ <label class="checks" style="margin-top:8px"><label><input type="checkbox" id="priv"${D.priv?" checked":""}><span>J'accepte la <a href="${CFG.privacyUrl}" target="_blank" rel="noopener">politique de confidentialité</a>.</span></label></label>${E.priv?`<div class="msg">${E.priv}</div>`:""}
+ <label class="checks" style="margin-top:8px"><label><input type="checkbox" id="conf"${D.conf?" checked":""}><span>Je confirme l'exactitude des informations et l'authenticité des documents transmis.</span></label></label>${E.conf?`<div class="msg">${E.conf}</div>`:""}</div>
+ ${E.submit?`<div class="msg" role="alert" style="margin-top:12px">${esc(E.submit)}</div>`:""}`;
+}
+function statusHTML(){
+ const s=submitted||{};const up=DOCS.filter(d=>F[d.k]?.ok);
+ const allUp=up.every(d=>F[d.k].state==="envoyé");
+ return `<h2 class="hd">Demande reçue</h2><p class="sub">Statut : <b>en attente de vérification</b>${s.applicationId?` · Référence ${esc(s.applicationId)}`:""}</p>
+ <div class="box"><ul class="st">
+ <li><span>Dossier envoyé</span><b class="ok">Reçu</b></li>
+ <li><span>Vérification de l'e-mail</span><b class="wn">${esc(s.emailStatus||"En attente")}</b></li>
+ <li><span>Vérification du téléphone</span><b class="wn">${esc(s.phoneStatus||"En attente")}</b></li>
+ <li><span>Documents reçus</span><b class="${allUp?"ok":"wn"}">${up.filter(d=>F[d.k].state==="envoyé").length} / ${up.length}</b></li>
+ <li><span>Contrôles automatiques</span><b class="wn">${esc(s.automatedStatus||"En cours")}</b></li>
+ <li><span>Examen manuel</span><b class="wn">${esc(s.manualReview||"À déterminer")}</b></li>
+ </ul></div>
+ ${allUp?"":`<div class="msg" role="alert">Certains documents n'ont pas pu être envoyés.</div><button class="p" data-retry="1" style="margin-top:8px">Réessayer l'envoi</button>`}
+ <div class="note" style="margin-top:20px">Vous ne pourrez publier des pièces et recevoir des commandes qu'après approbation de votre dossier. Nous vous préviendrons par e-mail si une correction ou un document supplémentaire est nécessaire.</div>`;
+}
+function render(){
+ renderSteps();const m=$("#main");
+ if(submitted){m.innerHTML=statusHTML();return}
+ let h="";
+ if(step<3){const S=STEPS[step];h=`<h2 class="hd">${S.t}</h2><p class="sub">${S.s}</p><div class="grid">${S.f.map(fieldHTML).join("")}</div>`}
+ else if(step===3) h=`<h2 class="hd">Documents</h2><p class="sub">PDF, JPEG, PNG ou WebP · ${CFG.maxMB} Mo maximum par fichier.</p><div class="note">Vos documents sont stockés de façon privée et ne sont consultables que par l'équipe de vérification.</div>${DOCS.map(docHTML).join("")}`;
+ else h=reviewHTML();
+ h+=`<div class="nav"><button id="prev"${step===0?" disabled":""}>Retour</button><button class="p" id="next"${busy?" disabled":""}>${step===4?(busy?"Envoi en cours…":"Envoyer ma demande"):"Continuer"}</button></div>`;
+ m.innerHTML=h;
+}
+
+/* ---------- Événements ---------- */
+document.addEventListener("input",e=>{
+ const t=e.target,id=t.dataset.id;
+ if(id){D[id]=t.value;if(E[id]){delete E[id];t.classList.remove("bad");t.closest("div:not(.ph)")?.querySelector(".msg")?.remove()}}
+});
+document.addEventListener("change",e=>{
+ const t=e.target;
+ if(t.dataset.chk){const a=D[t.dataset.chk]||[];D[t.dataset.chk]=t.checked?[...a,t.value]:a.filter(x=>x!==t.value);delete E[t.dataset.chk]}
+ if(t.dataset.doc)pick(t.dataset.doc,t.files[0]);
+ if(["terms","priv","conf"].includes(t.id)){D[t.id]=t.checked;delete E[t.id]}
+ if(t.dataset.id==="legal_form"||t.dataset.id==="role")render();
+});
+document.addEventListener("click",e=>{
+ const t=e.target;
+ if(t.id==="prev"){step--;E={};render();scrollTo(0,0)}
+ if(t.id==="next"){
+  if(step<4){if(validateStep(step))step++;render();scrollTo(0,0)}
+  else submit();
+ }
+ if(t.dataset.rm){if(F[t.dataset.rm]?.url)URL.revokeObjectURL(F[t.dataset.rm].url);delete F[t.dataset.rm];render()}
+ if(t.dataset.retry)uploadAll();
+});
+
+/* ---------- Envoi (validation finale côté serveur obligatoire) ---------- */
+const csrf=document.querySelector('meta[name="csrf-token"]')?.content;
+const hdr=()=>({"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest",...(csrf?{"X-CSRF-Token":csrf}:{})});
+async function submit(){
+ E={};
+ for(let i=0;i<4;i++){if(!validateStep(i)){step=i;render();return}}
+ ["terms","priv","conf"].forEach(k=>{if(!D[k])E[k]="Cette confirmation est obligatoire."});
+ if(Object.keys(E).length){render();return}
+ busy=true;render();
+ try{
+  const {pw2,terms,priv,conf,...body}=D;
+  body.phone="+216"+D.phone.replace(/\D/g,"");body.biz_phone="+216"+D.biz_phone.replace(/\D/g,"");
+  body.accepted={terms:true,privacy:true,confirmation:true,at:new Date().toISOString()};
+  const r=await fetch(CFG.apiBase+"/register",{method:"POST",credentials:"include",headers:hdr(),body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.message||(r.status===429?"Trop de tentatives. Réessayez plus tard.":"Le serveur a refusé la demande ("+r.status+")."));
+  appId=j.applicationId;submitted=j;D.pw=D.pw2="";
+  busy=false;render();await uploadAll();
+ }catch(err){busy=false;E.submit=err instanceof TypeError?"Serveur injoignable. Vérifiez votre connexion et réessayez.":err.message;render()}
+}
+function uploadOne(k){
+ return new Promise(res=>{
+  const x=F[k],fd=new FormData(),xhr=new XMLHttpRequest();
+  fd.append("documentType",k);fd.append("file",x.file);
+  xhr.open("POST",`${CFG.apiBase}/documents/${encodeURIComponent(appId)}`);
+  xhr.withCredentials=true;xhr.setRequestHeader("X-Requested-With","XMLHttpRequest");if(csrf)xhr.setRequestHeader("X-CSRF-Token",csrf);
+  xhr.upload.onprogress=e=>{if(e.lengthComputable){x.pct=Math.round(e.loaded/e.total*100);const b=$("#bar_"+k);if(b)b.style.width=x.pct+"%"}};
+  xhr.onload=()=>{x.state=xhr.status<300?"envoyé":"échec";if(x.state==="envoyé")x.pct=100;res()};
+  xhr.onerror=()=>{x.state="échec";res()};
+  x.state="envoi…";xhr.send(fd);
+ });
+}
+async function uploadAll(){
+ for(const d of DOCS){const x=F[d.k];if(x?.ok&&x.state!=="envoyé")await uploadOne(d.k)}
+ render();
+}
+render();
+</script>
+</body>
+</html>

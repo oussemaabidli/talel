@@ -1,0 +1,37 @@
+{
+  "name": "autoparts-seller",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3002",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "server:install": "npm install --prefix server",
+    "server:dev": "npm run dev --prefix server",
+    "server:build": "npm run build --prefix server",
+    "server:test": "npm test --prefix server",
+    "server:db:deploy": "npm run db:deploy --prefix server",
+    "server:seed": "npm run db:seed --prefix server",
+    "server:db:migrate": "npm run db:migrate --prefix server"
+  },
+  "dependencies": {
+    "lucide-react": "^1.54.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4",
+    "recharts": "^3.10.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@rollup/wasm-node": "^4.64.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~6.0.2",
+    "vite": "^6.4.4"
+  }
+}
