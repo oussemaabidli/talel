@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { StatusBadge, Avatar } from '../../components/ui';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/helpers';
-import type { Message } from '../../types';
 import {
   ChevronLeft, CheckCircle2, Circle, Clock, Truck,
   Package, ShieldCheck, MapPin, Send, MessageSquare,
@@ -13,7 +13,7 @@ import {
 export const ClientOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { orders, conversations, addMessage, currentClient, addToast } = useStore();
+  const { orders, conversations, currentClient, addToast } = useStore();
 
   const [messageInput, setMessageInput] = useState('');
 
@@ -37,33 +37,16 @@ export const ClientOrderDetail: React.FC = () => {
     );
   }
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageInput.trim()) return;
+    if (!messageInput.trim() || !conversation) return;
+    try { await clientApiRoutes.sendMessage(conversation.id, messageInput.trim()); setMessageInput(''); addToast('success', 'Message sent to seller.'); window.location.reload(); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Message could not be sent.'); }
+  };
 
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      contextType: 'order',
-      contextId: order.id,
-      contextLabel: `Order #${order.id}`,
-      senderId: currentClient.id,
-      senderName: currentClient.name,
-      senderRole: 'client',
-      senderAvatar: '',
-      content: messageInput.trim(),
-      timestamp: new Date().toISOString(),
-      isRead: true,
-    };
-
-    if (conversation) {
-      addMessage(conversation.id, newMessage);
-    } else {
-      // Create new conversation on the fly
-      addToast('success', 'Message posted to order log');
-    }
-
-    setMessageInput('');
-    addToast('success', 'Message sent to seller');
+  const handleCancelOrder = async () => {
+    try { await clientApiRoutes.cancelOrder(order.id); addToast('success', 'Order cancelled.'); window.location.reload(); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Order could not be cancelled.'); }
   };
 
   return (
@@ -83,12 +66,10 @@ export const ClientOrderDetail: React.FC = () => {
             </h1>
             <StatusBadge status={order.status} />
           </div>
-          <button
-            onClick={() => addToast('info', 'Invoice downloaded (simulated)')}
-            className="btn-secondary text-xs flex items-center gap-1.5 self-start sm:self-auto"
-          >
-            <Download size={14} /> Download Invoice
-          </button>
+          <div className="flex gap-2 items-center">
+            {['offer_accepted', 'seller_confirmed'].includes(order.status) && <button onClick={handleCancelOrder} className="btn-secondary text-xs text-danger">Cancel order</button>}
+            <span className="text-xs text-text-secondary">Payment and invoices are not enabled.</span>
+          </div>
         </div>
       </div>
 
@@ -194,8 +175,8 @@ export const ClientOrderDetail: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between text-text-secondary">
-                <span>Platform Assurance & Guarantee:</span>
-                <span className="font-semibold text-green-700">Included</span>
+                <span>Platform payment protection:</span>
+                <span className="font-semibold text-slate-600">Not enabled</span>
               </div>
             </div>
 

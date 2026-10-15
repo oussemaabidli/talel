@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { StatusBadge, SearchInput, Tabs, ConfirmModal } from '../../components/ui';
 import { formatDate } from '../../utils/helpers';
 import type { RequestStatus } from '../../types';
@@ -11,7 +12,7 @@ import {
 
 export const ClientRequests: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, requests, updateRequestStatus, addToast } = useStore();
+  const { currentClient, requests, addToast } = useStore();
 
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('all');
@@ -27,7 +28,6 @@ export const ClientRequests: React.FC = () => {
     { id: 'offer_accepted', label: 'Offer Accepted', count: myRequests.filter(r => r.status === 'offer_accepted').length },
     { id: 'in_progress', label: 'In Progress', count: myRequests.filter(r => r.status === 'in_progress').length },
     { id: 'completed', label: 'Completed', count: myRequests.filter(r => r.status === 'completed').length },
-    { id: 'draft', label: 'Drafts', count: myRequests.filter(r => r.status === 'draft').length },
   ];
 
   const filteredRequests = myRequests
@@ -50,9 +50,9 @@ export const ClientRequests: React.FC = () => {
       return 0;
     });
 
-  const handleCancelRequest = (id: string) => {
-    updateRequestStatus(id, 'cancelled');
-    addToast('info', `Request #${id} has been cancelled`);
+  const handleCancelRequest = async (id: string) => {
+    try { await clientApiRoutes.cancelRequest(id); addToast('info', `Request #${id} has been cancelled`); window.location.reload(); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be cancelled.'); }
   };
 
   return (
@@ -183,18 +183,6 @@ export const ClientRequests: React.FC = () => {
                         >
                           <Eye size={15} />
                         </button>
-                        {req.status === 'draft' && (
-                          <button
-                            onClick={() => {
-                              updateRequestStatus(req.id, 'published');
-                              addToast('success', `Request #${req.id} published`);
-                            }}
-                            title="Publish Draft"
-                            className="p-1.5 rounded-lg border border-border hover:bg-green-50 text-primary transition-colors"
-                          >
-                            <FileEdit size={15} />
-                          </button>
-                        )}
                         {!['completed', 'cancelled', 'offer_accepted'].includes(req.status) && (
                           <button
                             onClick={() => setCancelModalId(req.id)}

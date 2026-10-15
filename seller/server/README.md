@@ -1,6 +1,6 @@
 # Talel Shared API
 
-Node.js, Express, TypeScript, Prisma, and PostgreSQL API shared by the Seller and Host portals. Client portal operations remain a future integration.
+Node.js, Express, TypeScript, Prisma, and PostgreSQL API shared by the Client, Seller, and Host portals.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Create a local database (for a standard local PostgreSQL installation):
 createdb talel_seller
 ```
 
-Copy `.env.example` to `.env` in this folder and set `DATABASE_URL`, a random `COOKIE_SECRET` with at least 32 characters, and `APP_ORIGINS` for the portals you run (for local Seller and Host this includes ports 3002 and 3003). `PRIVATE_DOCUMENTS_DIR` is resolved relative to this `server/` directory; keep it outside static/public directories and do not commit its contents. Do not commit `.env`.
+Copy `.env.example` to `.env` in this folder and set `DATABASE_URL`, a random `COOKIE_SECRET` with at least 32 characters, and `APP_ORIGINS` for the portals you run (Client 3001, Seller 3002, Host 3003 by default). `PRIVATE_DOCUMENTS_DIR` is resolved relative to this `server/` directory; keep it outside static/public directories and do not commit its contents. Do not commit `.env`.
 
 ```powershell
 Copy-Item .env.example .env
@@ -53,6 +53,12 @@ The current environment did not provide a PostgreSQL service, so the migration h
 
 Synthetic request fixtures are optional and guarded. In PowerShell, set `$env:ALLOW_DEMO_FIXTURES = 'true'`, run `npm run server:seed` from the Seller root, then clear the variable with `Remove-Item Env:ALLOW_DEMO_FIXTURES`. The sample rows are labeled development examples and are never seeded automatically.
 
+## Client API
+
+Client auth is namespaced under `/api/v1/client/auth` and uses the shared HTTP-only session cookie with explicit `CLIENT` role checks. Registration never accepts a role. Client routes include profile update, owner-scoped request create/list/detail/edit/cancel, owner-scoped offers and atomic acceptance/rejection, order list/detail, participant-scoped conversations/messages, and per-user notifications. Client data is not returned by Seller endpoints. Requests linked to existing legacy rows may still have a null `clientId`; new Client-created requests always use the authenticated user ID.
+
+Apply the additive Client migration with `npm run server:db:deploy` after reviewing the configured database target. This repository change does not apply migrations automatically. Request reference-image uploads are unavailable because the existing private storage is specialized for Seller verification documents; the Client UI says this explicitly and never sends mock image URLs. There is no payment processor or Client-side payment action.
+
 ## API routes
 
 All business routes use `/api/v1`. Auth routes:
@@ -75,9 +81,9 @@ OpenAPI JSON is available at `http://localhost:4000/api/v1/openapi.json`.
 
 ## Host/Admin API
 
-Host routes share this API and PostgreSQL database under `/api/v1/host`. Host accounts must be provisioned explicitly; public Host registration is not available. Create the first Host account with `HOST_ADMIN_EMAIL` and a unique `HOST_ADMIN_PASSWORD` (at least 16 characters) set in the environment, then run `npm run db:host:create --prefix server` from the Seller root after the database migration is applied. This command refuses to overwrite an existing email. Host endpoints cover overview metrics, user and seller moderation, seller verification, requests, offers, orders, derived order transactions, categories, settings, and Host audit events. The current data model has no payment processor ledger or Client profile, so transaction rows are derived from orders and Client-only profile details are not available yet.
+Host routes share this API and PostgreSQL database under `/api/v1/host`. Host accounts must be provisioned explicitly; public Host registration is not available. Create the first Host account with `HOST_ADMIN_EMAIL` and a unique `HOST_ADMIN_PASSWORD` (at least 16 characters) set in the environment, then run `npm run db:host:create --prefix server` from the Seller root after the database migration is applied. This command refuses to overwrite an existing email. Host endpoints cover overview metrics, user and seller moderation, seller verification, requests, offers, orders, derived order transactions, categories, settings, and Host audit events. The data model has no payment processor ledger, so transaction rows are derived from orders.
 
-Money is stored as PostgreSQL `Decimal` and returned as decimal strings in TND. Inventory and seller ownership are always derived from the server session. Registration starts with `pending_verification`; no Seller endpoint can change that status. An authorized Host verification integration is required to approve accounts. Client request submission and offer acceptance are intentionally not implemented.
+Money is stored as PostgreSQL `Decimal` and returned as decimal strings in TND. Inventory and seller ownership are always derived from the server session. Registration starts with `pending_verification`; no Seller endpoint can change that status. An authorized Host verification integration is required to approve accounts. Client ownership is derived from the authenticated session and checked in every Client business route.
 
 ## Tests and builds
 

@@ -1,20 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { StatusBadge, Rating, VerifiedBadge, Avatar, EmptyState } from '../../components/ui';
 import { formatDate, formatCurrency } from '../../utils/helpers';
 import {
-  ChevronLeft, Car, Calendar, MapPin, Tag, ShieldCheck,
+  ChevronLeft, Car, Calendar, MapPin, Tag, ShieldCheck, Pencil,
   Truck, ArrowRight, Clock, MessageSquare, AlertCircle, Box
 } from 'lucide-react';
 
 export const ClientRequestDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { requests, offers } = useStore();
+  const { requests, offers, addToast } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const request = requests.find((r) => r.id === id);
   const requestOffers = offers.filter((o) => o.requestId === id);
+  const canEdit = request?.status === 'published' && request.offersCount === 0;
+  const handleEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (!request) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    try {
+      await clientApiRoutes.editRequest(request.id, { partName: String(form.get('partName')), category: String(form.get('category')), oemReference: String(form.get('referenceNumber')) || undefined, vehicleMake: request.vehicle.brand || undefined, vehicleModel: request.vehicle.model || undefined, vehicleYear: request.vehicle.year || undefined, description: String(form.get('description')), minBudget: Number(form.get('minBudget')), maxBudget: Number(form.get('maxBudget')) });
+      addToast('success', 'Request updated.'); window.location.reload();
+    } catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be updated.'); }
+    finally { setSaving(false); }
+  };
 
   if (!request) {
     return (
@@ -46,11 +60,11 @@ export const ClientRequestDetail: React.FC = () => {
             </h1>
             <StatusBadge status={request.status} />
           </div>
-          <span className="text-xs text-text-secondary flex items-center gap-1">
-            <Calendar size={14} /> Created {formatDate(request.createdAt)}
-          </span>
+          <div className="flex items-center gap-3"><span className="text-xs text-text-secondary flex items-center gap-1"><Calendar size={14} /> Created {formatDate(request.createdAt)}</span>{canEdit && <button type="button" onClick={() => setEditing(v => !v)} className="btn-secondary text-xs flex items-center gap-1"><Pencil size={13}/>{editing?'Close':'Edit request'}</button>}</div>
         </div>
       </div>
+
+      {editing && canEdit && <form onSubmit={handleEdit} className="card p-5 grid grid-cols-1 sm:grid-cols-2 gap-4"><label className="label">Part name<input name="partName" required defaultValue={request.partName} className="input-field mt-1" /></label><label className="label">Category<input name="category" required defaultValue={request.category} className="input-field mt-1" /></label><label className="label">OEM reference<input name="referenceNumber" defaultValue={request.referenceNumber ?? ''} className="input-field mt-1" /></label><label className="label">Description<textarea name="description" defaultValue={request.description} className="input-field mt-1" /></label><label className="label">Min budget<input name="minBudget" type="number" min="0" step="0.001" defaultValue={request.minBudget} className="input-field mt-1" /></label><label className="label">Max budget<input name="maxBudget" type="number" min="0" step="0.001" defaultValue={request.maxBudget} className="input-field mt-1" /></label><div className="sm:col-span-2 flex justify-end"><button disabled={saving} className="btn-primary">{saving?'Saving…':'Save changes'}</button></div></form>}
 
       {/* Main Request Details Card */}
       <div className="card p-6 sm:p-8 space-y-6">
@@ -128,7 +142,7 @@ export const ClientRequestDetail: React.FC = () => {
               Received Inbound Offers ({requestOffers.length})
             </h2>
             <p className="text-xs text-text-secondary">
-              Review quotes from verified auto-parts suppliers. Transactions and guarantees are protected on platform.
+              Review offers submitted by verified auto-parts suppliers. Payment protection is not enabled on the platform.
             </p>
           </div>
         </div>

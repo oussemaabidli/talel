@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { Avatar } from '../../components/ui';
 import { formatTimeAgo, formatDateTime } from '../../utils/helpers';
-import type { Message } from '../../types';
 import {
   MessageSquare, Send, ShieldAlert, Lock, ArrowRight,
   Package, FileText
 } from 'lucide-react';
 
 export const ClientMessages: React.FC = () => {
-  const { currentClient, conversations, addMessage, markConversationRead, addToast } = useStore();
+  const { currentClient, conversations, markConversationRead, addToast } = useStore();
 
   const clientConversations = conversations.filter((c) =>
     c.participants.some((p) => p.id === currentClient.id)
@@ -27,27 +27,11 @@ export const ClientMessages: React.FC = () => {
     markConversationRead(id);
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !activeConversation) return;
-
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      contextType: activeConversation.contextType,
-      contextId: activeConversation.contextId,
-      contextLabel: activeConversation.contextLabel,
-      senderId: currentClient.id,
-      senderName: currentClient.name,
-      senderRole: 'client',
-      senderAvatar: '',
-      content: inputText.trim(),
-      timestamp: new Date().toISOString(),
-      isRead: true,
-    };
-
-    addMessage(activeConversation.id, newMessage);
-    setInputText('');
-    addToast('success', 'Message sent in contextual thread');
+    try { await clientApiRoutes.sendMessage(activeConversation.id, inputText.trim()); setInputText(''); addToast('success', 'Message sent.'); window.location.reload(); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Message could not be sent.'); }
   };
 
   return (

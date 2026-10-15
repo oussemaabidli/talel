@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { StatusBadge, Rating, VerifiedBadge, Avatar, ConfirmModal, Modal } from '../../components/ui';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import {
@@ -11,7 +12,7 @@ import {
 export const ClientOfferDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { offers, requests, orders, acceptOffer, rejectOffer, addMessage, addToast, currentClient } = useStore();
+  const { offers, requests, addToast } = useStore();
 
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -34,26 +35,23 @@ export const ClientOfferDetail: React.FC = () => {
     );
   }
 
-  const handleConfirmAccept = () => {
-    acceptOffer(offer.id);
-    addToast('success', `Offer accepted! Order created successfully.`);
-    // Find newly created order
-    navigate('/client/orders');
+  const handleConfirmAccept = async () => {
+    try { await clientApiRoutes.acceptOffer(offer.id); addToast('success', 'Offer accepted. The order is ready to track.'); window.location.assign('/client/orders'); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Could not accept this offer.'); setIsAcceptModalOpen(false); }
   };
 
-  const handleConfirmReject = () => {
-    rejectOffer(offer.id);
-    addToast('info', `Offer #${offer.id} rejected.`);
-    setIsRejectModalOpen(false);
+  const handleConfirmReject = async () => {
+    try { await clientApiRoutes.rejectOffer(offer.id); addToast('info', 'Offer rejected.'); window.location.reload(); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Could not reject this offer.'); setIsRejectModalOpen(false); }
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageText.trim()) return;
-
-    addToast('success', 'Contextual message delivered to seller');
-    setMessageText('');
-    setIsMessageModalOpen(false);
-    navigate('/client/messages');
+    try {
+      const conversation = await clientApiRoutes.offerConversation(offer.id);
+      await clientApiRoutes.sendMessage(conversation.id, messageText.trim());
+      addToast('success', 'Message sent to seller.'); setMessageText(''); setIsMessageModalOpen(false); window.location.assign('/client/messages');
+    } catch (e) { addToast('error', e instanceof Error ? e.message : 'Message could not be sent.'); }
   };
 
   const totalAmount = offer.price + offer.deliveryCost;
@@ -182,8 +180,8 @@ export const ClientOfferDetail: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between text-text-secondary">
-                <span>Platform Guarantee:</span>
-                <span className="font-semibold text-green-700">Included</span>
+                <span>Platform payment protection:</span>
+                <span className="font-semibold text-slate-600">Not enabled</span>
               </div>
             </div>
 

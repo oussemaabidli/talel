@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { Avatar, Modal } from '../../components/ui';
 import { vehicleBrands, vehicleModels } from '../../data/mockData';
 import type { Vehicle } from '../../types';
@@ -12,7 +13,7 @@ export const ClientProfile: React.FC = () => {
   const { currentClient, updateClient, addToast } = useStore();
 
   const [name, setName] = useState(currentClient.name);
-  const [email, setEmail] = useState(currentClient.email);
+  const [email] = useState(currentClient.email);
   const [phone, setPhone] = useState(currentClient.phone);
   const [city, setCity] = useState(currentClient.city);
   const [address, setAddress] = useState(currentClient.address);
@@ -26,19 +27,13 @@ export const ClientProfile: React.FC = () => {
 
   const modelsForBrand = vehicleModels[newBrand] || ['Standard'];
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateClient({
-      name,
-      email,
-      phone,
-      city,
-      address,
-    });
-    addToast('success', 'Profile updated successfully');
+    try { await clientApiRoutes.profile({ name, phone, city, address, vehicles: currentClient.savedVehicles }); updateClient({ name, phone, city, address }); addToast('success', 'Profile updated successfully'); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Profile could not be saved.'); }
   };
 
-  const handleAddVehicle = () => {
+  const handleAddVehicle = async () => {
     const newVehicle: Vehicle = {
       id: `v-${Date.now()}`,
       brand: newBrand,
@@ -47,19 +42,18 @@ export const ClientProfile: React.FC = () => {
       engine: newEngine,
     };
 
-    updateClient({
-      savedVehicles: [...currentClient.savedVehicles, newVehicle],
-    });
+    const savedVehicles = [...currentClient.savedVehicles, newVehicle];
+    try { await clientApiRoutes.profile({ name: currentClient.name, phone: currentClient.phone, city: currentClient.city, address: currentClient.address, vehicles: savedVehicles }); updateClient({ savedVehicles }); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Vehicle could not be saved.'); return; }
 
     setIsAddVehicleOpen(false);
     addToast('success', `${newBrand} ${newModel} added to your garage`);
   };
 
-  const handleDeleteVehicle = (vehicleId: string) => {
-    updateClient({
-      savedVehicles: currentClient.savedVehicles.filter(v => v.id !== vehicleId),
-    });
-    addToast('info', 'Vehicle removed from garage');
+  const handleDeleteVehicle = async (vehicleId: string) => {
+    const savedVehicles = currentClient.savedVehicles.filter(v => v.id !== vehicleId);
+    try { await clientApiRoutes.profile({ name: currentClient.name, phone: currentClient.phone, city: currentClient.city, address: currentClient.address, vehicles: savedVehicles }); updateClient({ savedVehicles }); addToast('info', 'Vehicle removed from garage'); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Vehicle could not be removed.'); }
   };
 
   return (
@@ -76,10 +70,10 @@ export const ClientProfile: React.FC = () => {
         <Avatar name={currentClient.name} size="lg" className="w-16 h-16 text-xl" />
         <div className="text-center sm:text-left flex-1">
           <h2 className="text-lg font-bold text-navy-900">{currentClient.name}</h2>
-          <p className="text-xs text-text-secondary">{currentClient.email} • {currentClient.city}, Algeria</p>
+          <p className="text-xs text-text-secondary">{currentClient.email}{currentClient.city ? ` • ${currentClient.city}` : ''}</p>
           <div className="mt-2 flex flex-wrap gap-2 justify-center sm:justify-start">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700">
-              Verified Buyer
+              Client account
             </span>
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-accent">
               {currentClient.savedVehicles.length} Saved Vehicles
@@ -111,8 +105,8 @@ export const ClientProfile: React.FC = () => {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
               className="input-field"
+              readOnly
               required
             />
           </div>

@@ -1,19 +1,24 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import { formatTimeAgo } from '../../utils/helpers';
 import {
-  Bell, Check, Trash2, CheckCheck, Tag, Package,
+  Bell, Check, CheckCheck, Tag, Package,
   FileText, ArrowRight, AlertCircle
 } from 'lucide-react';
 
 export const ClientNotifications: React.FC = () => {
   const navigate = useNavigate();
-  const { clientNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, addToast } = useStore();
+  const { clientNotifications, markNotificationRead, markAllNotificationsRead, addToast } = useStore();
 
-  const handleMarkAll = () => {
-    markAllNotificationsRead('client');
-    addToast('success', 'All notifications marked as read');
+  const handleMarkAll = async () => {
+    try { await clientApiRoutes.markAllRead(); markAllNotificationsRead('client'); addToast('success', 'All notifications marked as read'); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Could not update notifications.'); }
+  };
+  const handleMarkRead = async (id: string) => {
+    try { await clientApiRoutes.markRead(id); markNotificationRead(id); }
+    catch (e) { addToast('error', e instanceof Error ? e.message : 'Could not update notification.'); }
   };
 
   const getIcon = (type: string) => {
@@ -92,7 +97,7 @@ export const ClientNotifications: React.FC = () => {
                   {n.link && (
                     <button
                       onClick={() => {
-                        markNotificationRead(n.id);
+                        void handleMarkRead(n.id);
                         navigate(n.link!);
                       }}
                       className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-accent hover:bg-accent-light transition-colors flex items-center gap-1"
@@ -103,7 +108,7 @@ export const ClientNotifications: React.FC = () => {
 
                   {!n.isRead && (
                     <button
-                      onClick={() => markNotificationRead(n.id)}
+                      onClick={() => void handleMarkRead(n.id)}
                       title="Mark as read"
                       className="p-1.5 rounded-lg text-text-tertiary hover:text-navy-900 hover:bg-surface-secondary"
                     >
@@ -111,16 +116,6 @@ export const ClientNotifications: React.FC = () => {
                     </button>
                   )}
 
-                  <button
-                    onClick={() => {
-                      deleteNotification(n.id);
-                      addToast('info', 'Notification removed');
-                    }}
-                    title="Delete notification"
-                    className="p-1.5 rounded-lg text-text-tertiary hover:text-danger hover:bg-red-50"
-                  >
-                    <Trash2 size={16} />
-                  </button>
                 </div>
               </div>
             ))}

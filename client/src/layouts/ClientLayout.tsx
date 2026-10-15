@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { clientAuth } from '../api/client';
 import { Avatar } from '../components/ui';
 import {
   LayoutDashboard, FileText, Tag, Package, MessageSquare,
@@ -27,9 +28,8 @@ export const ClientLayout: React.FC = () => {
     c.participants.some(p => p.id === currentClient.id) && c.unreadCount > 0
   ).length;
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try { await clientAuth.logout(); } finally { logout(); navigate('/'); }
   };
 
   return (

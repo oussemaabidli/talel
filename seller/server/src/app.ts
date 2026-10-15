@@ -12,6 +12,7 @@ import { prisma } from './db.js';
 import { env, allowedOrigins } from './config/env.js';
 import { requireSeller, requireApprovedSeller } from './middleware/auth.js';
 import { hostRouter } from './routes/host.js';
+import { clientRouter } from './routes/client.js';
 import { deletePrivateDocument, documentKinds, identifyDocument, maxDocumentBytes, safeOriginalName, savePrivateDocument } from './documents/storage.js';
 
 export const app = express();
@@ -41,6 +42,11 @@ api.get('/openapi.json', (_req, res) => res.json({
   openapi: '3.1.0', info: { title: 'Talel Shared API', version: '1.1.0' }, servers: [{ url: '/api/v1' }],
   paths: Object.fromEntries([
     ['/auth/register', ['post']], ['/auth/login', ['post']], ['/auth/logout', ['post']], ['/auth/me', ['get']],
+    ['/client/auth/register', ['post']], ['/client/auth/login', ['post']], ['/client/auth/logout', ['post']], ['/client/auth/me', ['get']],
+    ['/client/profile', ['patch']], ['/client/requests', ['get', 'post']], ['/client/requests/{requestId}', ['get', 'patch']], ['/client/requests/{requestId}/cancel', ['post']],
+    ['/client/offers', ['get']], ['/client/offers/{offerId}/accept', ['post']], ['/client/offers/{offerId}/reject', ['post']], ['/client/offers/{offerId}/conversation', ['post']],
+    ['/client/orders', ['get']], ['/client/orders/{orderId}', ['get']], ['/client/orders/{orderId}/cancel', ['post']], ['/client/conversations', ['get']], ['/client/conversations/{conversationId}/messages', ['get', 'post']],
+    ['/client/notifications', ['get']], ['/client/notifications/read-all', ['patch']], ['/client/notifications/{notificationId}/read', ['patch']],
     ['/seller/dashboard', ['get']], ['/seller/profile', ['get', 'patch']], ['/seller/inventory', ['get', 'post']],
     ['/seller/inventory/{id}', ['get', 'patch', 'delete']], ['/seller/inventory/{id}/stock', ['post']],
     ['/seller/requests', ['get']], ['/seller/requests/{id}', ['get']], ['/seller/offers', ['get', 'post']],
@@ -59,11 +65,11 @@ api.get('/openapi.json', (_req, res) => res.json({
     ['/host/settings', ['get']], ['/host/settings/{key}', ['patch']],
   ].map(([path, methods]) => [path, Object.fromEntries((methods as string[]).map((method) => {
     const routePath = String(path);
-    const isPublic = routePath === '/auth/register' || routePath === '/auth/login' || routePath === '/host/auth/login';
-    const security = isPublic ? [] : routePath.startsWith('/host/') ? [{ hostSession: [] }] : [{ sellerSession: [] }];
+    const isPublic = routePath === '/auth/register' || routePath === '/auth/login' || routePath === '/host/auth/login' || routePath === '/client/auth/register' || routePath === '/client/auth/login';
+    const security = isPublic ? [] : routePath.startsWith('/host/') ? [{ hostSession: [] }] : routePath.startsWith('/client/') ? [{ clientSession: [] }] : [{ sellerSession: [] }];
     return [method, { security, responses: { '200': { description: 'Successful response' }, '400': { description: 'Validation error' }, '401': { description: 'Authentication required' }, '403': { description: 'Forbidden or seller verification required' } } }];
   }))])),
-  components: { securitySchemes: { sellerSession: { type: 'apiKey', in: 'cookie', name: 'talel_session' }, hostSession: { type: 'apiKey', in: 'cookie', name: 'talel_session' } } },
+  components: { securitySchemes: { sellerSession: { type: 'apiKey', in: 'cookie', name: 'talel_session' }, clientSession: { type: 'apiKey', in: 'cookie', name: 'talel_session' }, hostSession: { type: 'apiKey', in: 'cookie', name: 'talel_session' } } },
 }));
 
 api.post('/auth/register', authLimiter, async (req, res, next) => {
@@ -95,6 +101,7 @@ api.get('/auth/me', requireSeller, async (req, res, next) => {
 });
 
 api.use('/host', hostRouter);
+api.use('/client', clientRouter);
 api.use(requireSeller);
 const sellerId = (req: express.Request) => req.sellerId!;
 const privateDocumentFields = { id: true, kind: true, originalName: true, mimeType: true, size: true, status: true, rejectionReason: true, submittedAt: true, reviewedAt: true } as const;
@@ -176,7 +183,7 @@ api.get('/seller/requests/:id', async (req, res, next) => { try { const data = a
 
 const offerSchema = z.object({ requestId: z.string().min(1), partName: z.string().trim().min(1).max(160), brand: z.string().max(100).default(''), referenceNumber: z.string().max(100).default(''), condition: z.nativeEnum(PartCondition), price: z.number().finite().positive().max(999999999), quantity: z.number().int().positive().max(100000), warranty: z.string().max(120).default(''), deliveryFee: z.number().finite().nonnegative().max(999999999).default(0), estimatedDelivery: z.string().max(120).default(''), description: z.string().max(4000).default('') });
 api.get('/seller/offers', async (req, res, next) => { try { const status = z.nativeEnum(OfferStatus).optional().parse(req.query.status); const requestId = z.string().max(80).optional().parse(req.query.requestId); res.json({ data: await prisma.offer.findMany({ where: { sellerId: sellerId(req), ...(status ? { status } : {}), ...(requestId ? { requestId } : {}) }, include: { request: { select: requestPublicFields } }, orderBy: { createdAt: 'desc' } }) }); } catch (error) { next(error); } });
-api.post('/seller/offers', async (req, res, next) => { try { const input = offerSchema.parse(req.body); const request = await prisma.marketplaceRequest.findFirst({ where: { id: input.requestId, status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } } }); if (!request) return res.status(409).json({ error: { code: 'REQUEST_CLOSED', message: 'This request is not accepting offers.' } }); const offer = await prisma.$transaction(async (tx) => { if (await tx.offer.findFirst({ where: { sellerId: sellerId(req), requestId: input.requestId, status: OfferStatus.PENDING }, select: { id: true } })) throw new Error('DUPLICATE_ACTIVE_OFFER'); return tx.offer.create({ data: { ...input, sellerId: sellerId(req), price: new Prisma.Decimal(input.price), deliveryFee: new Prisma.Decimal(input.deliveryFee), status: OfferStatus.PENDING } }); }); res.status(201).json({ data: offer }); } catch (error) { next(error); } });
+api.post('/seller/offers', async (req, res, next) => { try { const input = offerSchema.parse(req.body); const request = await prisma.marketplaceRequest.findFirst({ where: { id: input.requestId, status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } } }); if (!request) return res.status(409).json({ error: { code: 'REQUEST_CLOSED', message: 'This request is not accepting offers.' } }); const offer = await prisma.$transaction(async (tx) => { if (await tx.offer.findFirst({ where: { sellerId: sellerId(req), requestId: input.requestId, status: OfferStatus.PENDING }, select: { id: true } })) throw new Error('DUPLICATE_ACTIVE_OFFER'); const created = await tx.offer.create({ data: { ...input, sellerId: sellerId(req), price: new Prisma.Decimal(input.price), deliveryFee: new Prisma.Decimal(input.deliveryFee), status: OfferStatus.PENDING } }); await tx.marketplaceRequest.updateMany({ where: { id: request.id, status: RequestStatus.PUBLISHED }, data: { status: RequestStatus.OFFERS_RECEIVED } }); if (request.clientId) await tx.notification.create({ data: { userId: request.clientId, type: 'offer_received', title: 'New seller offer', message: `A seller submitted an offer for ${request.partName}.`, link: `/client/offers/${created.id}` } }); return created; }); res.status(201).json({ data: offer }); } catch (error) { next(error); } });
 api.get('/seller/offers/:id', async (req, res, next) => { try { const data = await prisma.offer.findFirst({ where: { id: req.params.id, sellerId: sellerId(req) }, include: { request: { select: requestPublicFields } } }); if (!data) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Offer not found.' } }); res.json({ data }); } catch (error) { next(error); } });
 api.patch('/seller/offers/:id', async (req, res, next) => { try { const { status } = z.object({ status: z.literal(OfferStatus.WITHDRAWN) }).parse(req.body); const result = await prisma.offer.updateMany({ where: { id: req.params.id, sellerId: sellerId(req), status: OfferStatus.PENDING }, data: { status } }); if (!result.count) return res.status(409).json({ error: { code: 'INVALID_TRANSITION', message: 'This offer cannot be withdrawn.' } }); res.json({ data: await prisma.offer.findFirst({ where: { id: req.params.id, sellerId: sellerId(req) } }) }); } catch (error) { next(error); } });
 
@@ -207,6 +214,8 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Record not found.' } });
   if (error instanceof Error && error.message === 'INVALID_ORDER_TRANSITION') return res.status(409).json({ error: { code: 'INVALID_TRANSITION', message: 'This order status transition is not allowed.' } });
   if (error instanceof Error && error.message === 'DUPLICATE_ACTIVE_OFFER') return res.status(409).json({ error: { code: 'DUPLICATE_OFFER', message: 'You already have an active offer for this request.' } });
+  if (error instanceof Error && (error as Error & { code?: string }).code === 'OFFER_NOT_ACTIONABLE') return res.status(409).json({ error: { code: 'OFFER_NOT_ACTIONABLE', message: error.message } });
+  if (error instanceof Error && (error as Error & { code?: string }).code === 'ORDER_NOT_CANCELLABLE') return res.status(409).json({ error: { code: 'ORDER_NOT_CANCELLABLE', message: error.message } });
   if (env.NODE_ENV !== 'production') console.error(error);
   return res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' } });
 });

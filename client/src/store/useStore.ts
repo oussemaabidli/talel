@@ -91,6 +91,7 @@ interface AppState {
   toasts: Array<{ id: string; type: 'success' | 'error' | 'info'; message: string }>;
   addToast: (type: 'success' | 'error' | 'info', message: string) => void;
   removeToast: (id: string) => void;
+  hydrateClientData: (data: { requests: SparePartRequest[]; offers: Offer[]; orders: Order[]; clientNotifications: Notification[]; conversations: Conversation[] }) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -463,6 +464,7 @@ export const useStore = create<AppState>()(
 
       // ---------- Toast ----------
       toasts: [],
+      hydrateClientData: (data) => set({ ...data, transactions: [] }),
       addToast: (type, message) => {
         const id = `toast-${Date.now()}`;
         set((state) => ({

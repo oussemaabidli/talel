@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { clientApiRoutes } from '../../api/client';
 import {
   vehicleBrands, vehicleModels, mockCategories
 } from '../../data/mockData';
-import type {
-  Vehicle, PartCondition, DeliveryMethod, SparePartRequest
-} from '../../types';
+import type { Vehicle, PartCondition, DeliveryMethod } from '../../types';
 import {
   Car, Wrench, FileText, DollarSign, CheckCircle2,
-  ChevronLeft, ChevronRight, Save, Upload, Plus, Trash2, Check
+  ChevronLeft, ChevronRight, Upload, Plus, Check
 } from 'lucide-react';
 
 export const ClientCreateRequest: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, addRequest, addToast } = useStore();
+  const { currentClient, addToast } = useStore();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -39,7 +38,6 @@ export const ClientCreateRequest: React.FC = () => {
   // Step 3: Details
   const [description, setDescription] = useState<string>('');
   const [additionalRequirements, setAdditionalRequirements] = useState<string>('');
-  const [mockUploadedImages, setMockUploadedImages] = useState<string[]>([]);
 
   // Step 4: Budget & Delivery
   const [minBudget, setMinBudget] = useState<number>(2000);
@@ -51,19 +49,7 @@ export const ClientCreateRequest: React.FC = () => {
   const activeBrand = isUsingCustomVehicle ? customVehicle.brand : selectedVehicle?.brand || 'Toyota';
   const modelsForBrand = vehicleModels[activeBrand] || ['Standard'];
 
-  const handleAddMockImage = () => {
-    const sampleImages = [
-      'https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=400&q=80',
-      'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=400&q=80'
-    ];
-    if (mockUploadedImages.length < 3) {
-      setMockUploadedImages([...mockUploadedImages, sampleImages[mockUploadedImages.length]]);
-      addToast('info', 'Mock part image attached');
-    }
-  };
-
-  const handlePublish = (asDraft: boolean = false) => {
+  const handlePublish = async () => {
     const finalVehicle = isUsingCustomVehicle ? customVehicle : selectedVehicle;
 
     if (!finalVehicle || !partName.trim()) {
@@ -71,32 +57,10 @@ export const ClientCreateRequest: React.FC = () => {
       return;
     }
 
-    const newRequest: SparePartRequest = {
-      id: `REQ-${Math.floor(1000 + Math.random() * 9000)}`,
-      clientId: currentClient.id,
-      clientName: currentClient.name,
-      vehicle: finalVehicle,
-      category,
-      partName: partName.trim(),
-      referenceNumber: referenceNumber.trim() || undefined,
-      quantity,
-      condition,
-      description: description.trim() || `Request for ${partName}`,
-      images: mockUploadedImages,
-      additionalRequirements: additionalRequirements.trim() || undefined,
-      minBudget,
-      maxBudget,
-      deliveryMethod,
-      location: location.trim() || 'Algiers',
-      status: asDraft ? 'draft' : 'published',
-      offersCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    addRequest(newRequest);
-    addToast('success', asDraft ? 'Draft saved successfully' : 'Request Published Successfully!');
-    navigate('/client/requests');
+    try {
+      await clientApiRoutes.createRequest({ partName: partName.trim(), category, oemReference: referenceNumber.trim() || undefined, vehicleMake: finalVehicle.brand, vehicleModel: finalVehicle.model, vehicleYear: finalVehicle.year, condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod, location: location.trim() || currentClient.city || undefined });
+      addToast('success', 'Request published successfully.'); navigate('/client/requests');
+    } catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be published.'); }
   };
 
   const steps = [
@@ -370,35 +334,13 @@ export const ClientCreateRequest: React.FC = () => {
             </div>
 
             <div>
-              <label className="label">Upload Images (Mock)</label>
+              <label className="label">Reference Images</label>
               <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:bg-slate-50 transition-colors">
                 <Upload size={28} className="mx-auto text-text-tertiary mb-2" />
-                <p className="text-xs font-semibold text-navy-900">Click to attach photos of the part or reference tag</p>
-                <p className="text-[11px] text-text-secondary mt-1">PNG, JPG up to 10MB (Simulated locally)</p>
-                <button
-                  type="button"
-                  onClick={handleAddMockImage}
-                  className="mt-3 px-4 py-1.5 border border-border rounded-lg text-xs font-semibold text-accent hover:bg-accent-light transition-colors"
-                >
-                  + Add Sample Image
-                </button>
+                <p className="text-xs font-semibold text-navy-900">Reference image uploads are not configured yet.</p>
+                <p className="text-[11px] text-text-secondary mt-1">Your request can still be published with a written description.</p>
+                <p className="mt-3 text-xs text-text-secondary">Image uploads will be available when secure request-image storage is configured.</p>
               </div>
-
-              {mockUploadedImages.length > 0 && (
-                <div className="flex gap-3 mt-3">
-                  {mockUploadedImages.map((img, i) => (
-                    <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border group">
-                      <img src={img} alt="Uploaded sample" className="w-full h-full object-cover" />
-                      <button
-                        onClick={() => setMockUploadedImages(mockUploadedImages.filter((_, idx) => idx !== i))}
-                        className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-80 hover:opacity-100"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             <div>
@@ -562,14 +504,6 @@ export const ClientCreateRequest: React.FC = () => {
           )}
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => handlePublish(true)}
-              className="px-4 py-2.5 rounded-lg border border-border text-xs font-semibold text-text-secondary hover:bg-surface-secondary flex items-center gap-1.5 transition-colors"
-            >
-              <Save size={15} /> Save Draft
-            </button>
-
             {currentStep < 5 ? (
               <button
                 type="button"
@@ -587,7 +521,7 @@ export const ClientCreateRequest: React.FC = () => {
             ) : (
               <button
                 type="button"
-                onClick={() => handlePublish(false)}
+                onClick={() => handlePublish()}
                 className="btn-primary px-6"
               >
                 <CheckCircle2 size={16} /> Publish Request
