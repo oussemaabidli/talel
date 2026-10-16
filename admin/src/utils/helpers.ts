@@ -44,7 +44,7 @@ export function formatCurrency(amount: number): string {
     style: 'currency',
     currency: 'TND',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 3,
   }).format(amount);
 }
 

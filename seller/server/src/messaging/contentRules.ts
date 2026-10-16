@@ -33,9 +33,11 @@ export function containsDirectContactDetails(body: string): boolean {
   return phoneCandidates.some((candidate) => {
     const digits = candidate.replace(/\D/g, '');
     const hasPhoneFormatting = /[+\s().-]/.test(candidate) || phoneContext;
+    const hasInternationalPrefix = /^\s*(?:\+|00)/.test(candidate);
     return (digits.length === 8 && /^[2-9]/.test(digits) && hasPhoneFormatting)
       || (digits.length === 11 && digits.startsWith('216') && /^[2-9]/.test(digits.slice(3)))
-      || (digits.length === 13 && digits.startsWith('00216') && /^[2-9]/.test(digits.slice(5)));
+      || (digits.length === 13 && digits.startsWith('00216') && /^[2-9]/.test(digits.slice(5)))
+      || (hasInternationalPrefix && digits.length >= 10 && digits.length <= 15);
   });
 }
 

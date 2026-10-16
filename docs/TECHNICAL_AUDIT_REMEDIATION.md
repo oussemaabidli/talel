@@ -89,11 +89,22 @@
 - `git diff --check`: **passed** (Git emitted only CRLF normalization warnings).
 - Clean migration application, PostgreSQL integration tests (including the new 501-order case and concurrency scenarios), CI workflow, and browser E2E have **not** been executed. No migration was needed or added because the Prisma schema did not change.
 
+## Continuation verification (2026-10-16)
+
+- Initial recheck found the existing remediation uncommitted at `baeadd25e3b2435580a9e28a26b1acfd6a41d464`. Before the final check, the branch advanced to commit `e7c818b` (`Harden marketplace and document workflows`), which contains those remediation files; I did not create that commit. The four continuation edits listed below remain uncommitted. `git diff --check` reported no whitespace errors.
+- The former API PID 6492 and port-4000 listener are no longer present. However, the Prisma query-engine DLL is still held by Node PID 14536. That process has no TCP connections, and it was not stopped or interrupted. `npm run build` was not retried while the DLL remained in use.
+- PostgreSQL integration preflight: `npm run test:integration` exited 1 with the expected `TEST_DATABASE_URL is required...` guard. Neither ports 5432 nor 55433 has a listener, and Docker, `psql`, and `gh` are unavailable. No test database was created or used; migration deployment and integration scenarios remain unverified.
+- Unit suite after adding international phone-number coverage: **passed**, 28 tests passed; 14 database integration tests were skipped in the general suite. `npx tsc -p tsconfig.json` and `npx prisma validate` with a placeholder local URL both passed; schema validation did not connect to PostgreSQL.
+- Client, Seller, and Admin production frontend builds all **passed**. Admin was rebuilt again after correcting TND currency formatting to retain up to three decimal places; a direct formatting check confirmed `12.345` remains visible.
+- CI workflow was inspected: it defines PostgreSQL 16, explicit disposable database URLs, migration deployment, a guarded integration command, unit tests, backend build, and a frontend build matrix. It was **not run**: no GitHub CLI/integration, Docker, or actionlint is available in this environment. YAML parsing by a GitHub Actions validator and actual hosted execution remain unverified.
+- Regression review found that the international-phone detector only recognized Tunisian numbers. It now also detects explicitly international `+`/`00` numbers of 10–15 digits, with a unit regression case. Admin currency formatting now preserves TND millimes. These are the only additional fixes from this continuation.
+- The concurrent cancellation/acceptance paths use serializable transactions; Prisma `P2034` conflicts map to HTTP 409, and the integration test checks exactly one success, one conflict, and consistent final state. This behavior remains **unexecuted against PostgreSQL**.
+
 ## Remaining risks and decisions
 
 - Decide whether RNE and tax documents are mandatory or conditional for each supported seller legal/business type. Current source does not establish those rules.
 - Local filesystem storage requires a durable private persistent volume, backup/restore testing, and a malware scanning/quarantine extension before real identity documents are accepted.
 - Contact detection is heuristic; normalization and server-side coverage reduce common bypasses but cannot guarantee detection of all obfuscations or language variants.
-- Provide and verify a disposable PostgreSQL test target to run migration and integration suites; the new CI database job is configuration only until an actual CI run succeeds.
+- Stop or close the process holding the Prisma DLL from its own terminal after confirming it is safe (PID 14536 was identified as a Node process, but its owning task could not be established). Then rerun Prisma generation and the backend production build. Separately provide a disposable PostgreSQL test target to run migrations and integration suites; the new CI database job is configuration only until an actual CI run succeeds.
 - Add browser E2E tests and complete database-side pagination/aggregate reporting before acceptance or launch-readiness claims.
 - Payment processing, escrow, commission collection, and payouts are not represented as implemented capabilities.

@@ -5,6 +5,7 @@ describe('marketplace message contact rule', () => {
   it.each([
     'Email me at parts@example.com',
     'Call +216 22 345 678',
+    'Call +1 (202) 555-0123',
     'Use https://example.com/contact',
     'My Instagram is @parts_shop',
     'Message me at wa.me/21622345678',
