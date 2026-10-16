@@ -165,6 +165,7 @@ export const SellerCreateOffer: React.FC = () => {
             <input
               type="number"
               min="1"
+              max={request?.quantity ?? 100000}
               value={quantity}
               onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
               className="input-field"

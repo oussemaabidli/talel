@@ -42,10 +42,10 @@ export function formatTimeAgo(dateString: string): string {
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'DZD',
+    currency: 'TND',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount).replace('DZD', 'DA');
+    maximumFractionDigits: 3,
+  }).format(amount);
 }
 
 export function formatNumber(num: number): string {

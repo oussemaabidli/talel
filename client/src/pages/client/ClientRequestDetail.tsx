@@ -12,7 +12,7 @@ import {
 export const ClientRequestDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { requests, offers, addToast } = useStore();
+  const { requests, offers, updateRequest, addToast } = useStore();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -24,8 +24,9 @@ export const ClientRequestDetail: React.FC = () => {
     const form = new FormData(event.currentTarget);
     setSaving(true);
     try {
-      await clientApiRoutes.editRequest(request.id, { partName: String(form.get('partName')), category: String(form.get('category')), oemReference: String(form.get('referenceNumber')) || undefined, vehicleMake: request.vehicle.brand || undefined, vehicleModel: request.vehicle.model || undefined, vehicleYear: request.vehicle.year || undefined, description: String(form.get('description')), minBudget: Number(form.get('minBudget')), maxBudget: Number(form.get('maxBudget')) });
-      addToast('success', 'Request updated.'); window.location.reload();
+      const saved = await clientApiRoutes.editRequest(request.id, { partName: String(form.get('partName')), category: String(form.get('category')), oemReference: String(form.get('referenceNumber')) || undefined, vehicleMake: request.vehicle.brand || undefined, vehicleModel: request.vehicle.model || undefined, vehicleYear: request.vehicle.year || undefined, description: String(form.get('description')), minBudget: Number(form.get('minBudget')), maxBudget: Number(form.get('maxBudget')) });
+      updateRequest(request.id, { partName: saved.partName, category: saved.category, referenceNumber: saved.oemReference ?? '', description: saved.description, minBudget: Number(saved.minBudget ?? 0), maxBudget: Number(saved.maxBudget ?? 0), updatedAt: saved.updatedAt });
+      addToast('success', 'Request updated.'); setEditing(false);
     } catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be updated.'); }
     finally { setSaving(false); }
   };
@@ -105,7 +106,7 @@ export const ClientRequestDetail: React.FC = () => {
             </div>
             <div>
               <p className="text-[11px] font-bold text-text-tertiary uppercase">Budget & Region</p>
-              <p className="text-sm font-bold text-navy-900">{request.minBudget} - {request.maxBudget} DA</p>
+              <p className="text-sm font-bold text-navy-900">{request.minBudget} - {request.maxBudget} TND</p>
               <p className="text-xs text-text-secondary">
                 {request.location} • Qty: {request.quantity} ({request.deliveryMethod})
               </p>
@@ -212,7 +213,7 @@ export const ClientRequestDetail: React.FC = () => {
                 <div className="mt-5 pt-3 border-t border-border flex items-center justify-between">
                   <div className="text-[11px] text-text-tertiary flex items-center gap-1">
                     <Truck size={13} />
-                    <span>Delivery: {offer.deliveryCost === 0 ? 'Free' : `${offer.deliveryCost} DA`} ({offer.deliveryTime})</span>
+                    <span>Delivery: {offer.deliveryCost === 0 ? 'Free' : `${offer.deliveryCost} TND`} ({offer.deliveryTime})</span>
                   </div>
 
                   <button

@@ -83,7 +83,7 @@ export const SellerMessages: React.FC = () => {
       <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center gap-3 text-xs text-blue-900">
         <Lock size={16} className="text-accent shrink-0" />
         <span>
-          <strong className="font-bold">Compliance Rule:</strong> All quotes, warranties, and communications must remain on platform to qualify for seller payment protection.
+          <strong className="font-bold">Messaging rule:</strong> The server blocks phone numbers, email addresses, social handles, and external contact links in marketplace messages. Payment processing and seller payment protection are not available.
         </span>
       </div>
 

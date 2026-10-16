@@ -25,15 +25,14 @@ const navItems = [
 ];
 
 export const AdminLayout: React.FC = () => {
-  const { logout } = useStore();
+  const { logout, addToast } = useStore();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
-  const handleLogout = () => {
-    void hostApi('/auth/logout', { method: 'POST' }).catch(() => undefined);
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try { await hostApi('/auth/logout', { method: 'POST' }); logout(); navigate('/'); }
+    catch (error) { addToast('error', error instanceof Error ? `Could not end your server session: ${error.message}` : 'Could not end your server session. Please try again.'); }
   };
 
   return (

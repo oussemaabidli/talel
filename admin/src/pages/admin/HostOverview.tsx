@@ -51,7 +51,7 @@ export const HostOverview: React.FC = () => {
             AutoParts Pro Platform Overview
           </h1>
           <p className="text-slate-300 text-sm mt-1 max-w-xl">
-            Real-time control tower monitoring marketplace liquidity, transaction guarantees, and network activity.
+            Real-time overview of marketplace activity, seller verification, and platform operations.
           </p>
         </div>
 

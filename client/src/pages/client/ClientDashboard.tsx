@@ -74,7 +74,7 @@ export const ClientDashboard: React.FC = () => {
             <ul className="text-xs text-slate-300 mt-3 space-y-1.5">
               <li className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Trusted suppliers with verified warranty
+                Seller business documents reviewed before marketplace access
               </li>
               <li className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary" />
@@ -82,7 +82,7 @@ export const ClientDashboard: React.FC = () => {
               </li>
               <li className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Fast delivery across all regions
+                View order status updates in your account
               </li>
             </ul>
           </div>

@@ -33,7 +33,7 @@ export const HostTransactions: React.FC = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="stat-card">
-          <span className="text-xs font-semibold text-text-secondary uppercase">Gross Processed Volume (GMV)</span>
+          <span className="text-xs font-semibold text-text-secondary uppercase">Gross Marketplace Order Value (GMV)</span>
           <p className="text-2xl font-extrabold text-navy-900 mt-2">{formatCurrency(totalGMV)}</p>
           <span className="text-xs text-text-secondary">Across {transactions.length} orders</span>
         </div>

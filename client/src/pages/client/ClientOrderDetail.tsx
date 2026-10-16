@@ -169,8 +169,8 @@ export const ClientOrderDetail: React.FC = () => {
             </h3>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between text-text-secondary">
-                <span>Part Price (Qty {order.quantity}):</span>
-                <span className="font-semibold text-navy-900">{formatCurrency(order.price)}</span>
+                <span>Part Price ({formatCurrency(order.price)} × {order.quantity}):</span>
+                <span className="font-semibold text-navy-900">{formatCurrency(order.price * order.quantity)}</span>
               </div>
               <div className="flex justify-between text-text-secondary">
                 <span>Shipping / Courier:</span>
@@ -185,7 +185,7 @@ export const ClientOrderDetail: React.FC = () => {
             </div>
 
             <div className="pt-3 border-t border-border flex justify-between items-baseline">
-              <span className="text-sm font-bold text-navy-900">Total Paid:</span>
+              <span className="text-sm font-bold text-navy-900">Order Total (not paid through Talel):</span>
               <span className="text-xl font-extrabold text-navy-900">
                 {formatCurrency(order.totalAmount)}
               </span>

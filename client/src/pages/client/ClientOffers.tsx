@@ -24,6 +24,7 @@ export const ClientOffers: React.FC = () => {
   // Offers for current client's requests
   const myRequests = requests.filter(r => r.clientId === currentClient.id);
   const myOffers = offers.filter(o => myRequests.some(r => r.id === o.requestId));
+  const offerTotal = (offer: Offer) => offer.price * offer.quantity + offer.deliveryCost;
 
   const tabs = [
     { id: 'all', label: 'All Offers', count: myOffers.length },
@@ -45,8 +46,8 @@ export const ClientOffers: React.FC = () => {
       return true;
     })
     .sort((a, b) => {
-      if (sortBy === 'price_asc') return (a.price + a.deliveryCost) - (b.price + b.deliveryCost);
-      if (sortBy === 'price_desc') return (b.price + b.deliveryCost) - (a.price + a.deliveryCost);
+      if (sortBy === 'price_asc') return offerTotal(a) - offerTotal(b);
+      if (sortBy === 'price_desc') return offerTotal(b) - offerTotal(a);
       if (sortBy === 'rating') return b.sellerRating - a.sellerRating;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
@@ -169,11 +170,12 @@ export const ClientOffers: React.FC = () => {
                     <h3 className="text-base font-bold text-navy-900">{offer.partName}</h3>
                     <div className="mt-1 flex items-baseline gap-2">
                       <span className="text-xl font-extrabold text-navy-900">
-                        {formatCurrency(offer.price)}
+                        {formatCurrency(offerTotal(offer))}
                       </span>
+                      <span className="text-xs text-text-secondary">total for {offer.quantity} item{offer.quantity === 1 ? '' : 's'}</span>
                       {offer.deliveryCost > 0 ? (
                         <span className="text-xs text-text-secondary">
-                          + {offer.deliveryCost} DA delivery
+                          + {offer.deliveryCost} TND delivery
                         </span>
                       ) : (
                         <span className="text-xs font-semibold text-primary">
@@ -268,7 +270,7 @@ export const ClientOffers: React.FC = () => {
                 ))}
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-semibold text-text-secondary">Price</td>
+                <td className="py-2.5 px-3 font-semibold text-text-secondary">Unit Price</td>
                 {comparingOffers.map((o) => (
                   <td key={o.id} className="py-2.5 px-3 font-extrabold text-navy-900 text-sm">
                     {formatCurrency(o.price)}
@@ -276,11 +278,23 @@ export const ClientOffers: React.FC = () => {
                 ))}
               </tr>
               <tr>
+                <td className="py-2.5 px-3 font-semibold text-text-secondary">Quantity</td>
+                {comparingOffers.map((o) => (
+                  <td key={o.id} className="py-2.5 px-3">{o.quantity}</td>
+                ))}
+              </tr>
+              <tr>
                 <td className="py-2.5 px-3 font-semibold text-text-secondary">Delivery Cost</td>
                 {comparingOffers.map((o) => (
                   <td key={o.id} className="py-2.5 px-3 font-semibold">
-                    {o.deliveryCost === 0 ? 'Free Delivery' : `${o.deliveryCost} DA (${o.deliveryTime})`}
+                    {o.deliveryCost === 0 ? 'Free Delivery' : `${o.deliveryCost} TND (${o.deliveryTime})`}
                   </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="py-2.5 px-3 font-semibold text-text-secondary">Total Quote</td>
+                {comparingOffers.map((o) => (
+                  <td key={o.id} className="py-2.5 px-3 font-extrabold text-navy-900">{formatCurrency(offerTotal(o))}</td>
                 ))}
               </tr>
               <tr>

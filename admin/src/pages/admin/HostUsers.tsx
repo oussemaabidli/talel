@@ -128,7 +128,7 @@ export const HostUsers: React.FC = () => {
                     </span>
                   </td>
                   <td className="py-3.5 px-4 text-xs text-text-secondary">
-                    {u.city || 'Algiers'}, Algeria
+                    {u.city || 'Location not provided'}, Tunisia
                   </td>
                   <td className="py-3.5 px-4 text-xs">
                     {u.isVerified ? (

@@ -32,7 +32,7 @@ const PageLoader = () => (
 );
 
 const AppRoutes: React.FC = () => {
-  const { isAuthenticated, login, updateSeller } = useStore();
+  const { isAuthenticated, login, logout, updateSeller } = useStore();
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -57,13 +57,14 @@ const AppRoutes: React.FC = () => {
         }
       })
       .catch(() => {
-        // Backend offline or unreachable: keep local mock session intact
+        // A local mock session must never keep protected pages available without a server session.
+        logout();
       })
       .finally(() => {
         if (active) setAuthChecked(true);
       });
     return () => { active = false; };
-  }, [login, updateSeller]);
+  }, [login, logout, updateSeller]);
 
   if (!authChecked) return <PageLoader />;
 

@@ -19,7 +19,7 @@ const navItems = [
 ];
 
 export const ClientLayout: React.FC = () => {
-  const { currentClient, clientNotifications, conversations, logout } = useStore();
+  const { currentClient, clientNotifications, conversations, logout, addToast } = useStore();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -29,7 +29,8 @@ export const ClientLayout: React.FC = () => {
   ).length;
 
   const handleLogout = async () => {
-    try { await clientAuth.logout(); } finally { logout(); navigate('/'); }
+    try { await clientAuth.logout(); logout(); navigate('/'); }
+    catch (error) { addToast('error', error instanceof Error ? `Could not end your server session: ${error.message}` : 'Could not end your server session. Please try again.'); }
   };
 
   return (

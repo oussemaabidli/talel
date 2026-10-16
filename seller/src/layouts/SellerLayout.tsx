@@ -22,7 +22,7 @@ const navItems = [
 ];
 
 export const SellerLayout: React.FC = () => {
-  const { currentSeller, logout } = useStore();
+  const { currentSeller, logout, addToast } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -33,10 +33,8 @@ export const SellerLayout: React.FC = () => {
   }, [location.pathname]);
 
   const handleLogout = async () => {
-    try { await api.post('/auth/logout'); } finally {
-    logout();
-    navigate('/');
-    }
+    try { await api.post('/auth/logout'); logout(); navigate('/'); }
+    catch (error) { addToast('error', error instanceof Error ? `Could not end your server session: ${error.message}` : 'Could not end your server session. Please try again.'); }
   };
 
   return (

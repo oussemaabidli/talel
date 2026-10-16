@@ -137,7 +137,7 @@ export const SellerRequestDetail: React.FC = () => {
           <div>
             <p className="font-bold">Automotive Parts Marketplace Policy</p>
             <p className="text-amber-800 mt-0.5">
-              Quotes must accurately specify warranty duration and OEM/aftermarket brand. Off-platform transactions and direct phone sharing are strictly prohibited to maintain verified supplier status.
+              Quote details should clearly state warranty duration and OEM/aftermarket brand. Marketplace messages reject contact details; payment processing and seller payment protection are not available.
             </p>
           </div>
         </div>

@@ -42,7 +42,7 @@ export const ClientCreateRequest: React.FC = () => {
   const [minBudget, setMinBudget] = useState<number>(2000);
   const [maxBudget, setMaxBudget] = useState<number>(6000);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery');
-  const [location, setLocation] = useState<string>(currentClient.city || 'Algiers');
+  const [location, setLocation] = useState<string>(currentClient.city || '');
 
   useEffect(() => { clientApiRoutes.categories().then(setCategories).catch((e) => addToast('error', e instanceof Error ? e.message : 'Could not load categories.')); }, [addToast]);
 
@@ -53,13 +53,17 @@ export const ClientCreateRequest: React.FC = () => {
   const handlePublish = async () => {
     const finalVehicle = isUsingCustomVehicle ? customVehicle : selectedVehicle;
 
-    if (!finalVehicle || !partName.trim()) {
-      addToast('error', 'Please complete the vehicle and spare part details');
+    if (!finalVehicle || !partName.trim() || !categories.some((item) => item.name === category) || !location.trim()) {
+      addToast('error', 'Choose a vehicle, an active category, a location in Tunisia, and enter the part name.');
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1 || minBudget < 0 || maxBudget < 0 || minBudget > maxBudget) {
+      addToast('error', 'Enter a positive whole-number quantity and a valid budget range.');
       return;
     }
 
     try {
-      const saved = await clientApiRoutes.createRequest({ partName: partName.trim(), category, oemReference: referenceNumber.trim() || undefined, vehicleMake: finalVehicle.brand, vehicleModel: finalVehicle.model, vehicleYear: finalVehicle.year, condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod, location: location.trim() || currentClient.city || undefined });
+      const saved = await clientApiRoutes.createRequest({ partName: partName.trim(), category, oemReference: referenceNumber.trim() || undefined, vehicleMake: finalVehicle.brand, vehicleModel: finalVehicle.model, vehicleYear: finalVehicle.year, condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod, location: location.trim() });
       addRequest({ id: saved.id, clientId: currentClient.id, clientName: currentClient.name, vehicle: finalVehicle, category: saved.category, partName: saved.partName, referenceNumber: saved.oemReference, quantity: saved.quantity, condition: String(saved.condition).toLowerCase() as PartCondition, description: saved.description, images: [], minBudget: Number(saved.minBudget ?? 0), maxBudget: Number(saved.maxBudget ?? 0), deliveryMethod: (saved.deliveryMethod ?? deliveryMethod) as DeliveryMethod, location: saved.location ?? '', status: String(saved.status).toLowerCase() as any, offersCount: saved._count?.offers ?? 0, createdAt: saved.createdAt, updatedAt: saved.updatedAt });
       addToast('success', 'Request published successfully.'); navigate('/client/requests');
     } catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be published.'); }
@@ -243,15 +247,15 @@ export const ClientCreateRequest: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Category *</label>
-                <input
-                  list="client-categories"
+                <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="input-field"
-                  placeholder="Choose or enter a category"
+                  className="select-field"
                   required
-                />
-                <datalist id="client-categories">{categories.map((c) => <option key={c.id} value={c.name} />)}</datalist>
+                >
+                  <option value="">Choose a category</option>
+                  {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
               </div>
 
               <div>
@@ -368,7 +372,7 @@ export const ClientCreateRequest: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="label">Minimum Budget (DZD)</label>
+                <label className="label">Minimum Budget (TND)</label>
                 <input
                   type="number"
                   step="500"
@@ -379,7 +383,7 @@ export const ClientCreateRequest: React.FC = () => {
               </div>
 
               <div>
-                <label className="label">Maximum Budget (DZD)</label>
+                <label className="label">Maximum Budget (TND)</label>
                 <input
                   type="number"
                   step="500"
@@ -418,10 +422,11 @@ export const ClientCreateRequest: React.FC = () => {
               <label className="label">Your City / Location</label>
               <input
                 type="text"
-                placeholder="e.g. Algiers, Oran, Constantine"
+                placeholder="Choose your city or governorate in Tunisia"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="input-field"
+                required
               />
             </div>
           </div>
@@ -461,7 +466,7 @@ export const ClientCreateRequest: React.FC = () => {
 
                 <div>
                   <span className="text-[11px] text-text-tertiary uppercase font-semibold">Budget Range</span>
-                  <p className="text-sm font-bold text-navy-900">{minBudget} - {maxBudget} DA</p>
+                  <p className="text-sm font-bold text-navy-900">{minBudget} - {maxBudget} TND</p>
                   <p className="text-xs text-text-secondary">{deliveryMethod} in {location}</p>
                 </div>
               </div>
@@ -484,7 +489,7 @@ export const ClientCreateRequest: React.FC = () => {
               <div>
                 <p className="font-bold">Transaction Integrity Rule</p>
                 <p className="text-blue-800 mt-0.5">
-                  Offers will be received directly inside your portal. Direct contact outside the platform is restricted to protect your guarantee.
+                  Offers and messages stay in your portal. Contact details are blocked in marketplace messages; Talel does not currently provide payment processing or buyer guarantees.
                 </p>
               </div>
             </div>

@@ -63,6 +63,19 @@ describe('Talel Seller API', () => {
     const response = await request(app).post('/api/v1/client/auth/register').send({ email: 'bad', password: 'short' });
     expect(response.status).toBe(429);
     expect(response.body.error.code).toBe('RATE_LIMITED');
+    await request(app).post('/api/v1/client/auth/login').send({ email: 'bad', password: 'short' }).expect(429);
+  });
+
+  it('rate limits Seller and Host login attempts before database access', async () => {
+    // Seller login shares its limiter with registration; the earlier Seller registration validation test used one attempt.
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      await request(app).post('/api/v1/auth/login').send({ email: 'bad', password: '' }).expect(400);
+    }
+    await request(app).post('/api/v1/auth/login').send({ email: 'bad', password: '' }).expect(429);
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await request(app).post('/api/v1/host/auth/login').send({ email: 'bad', password: '' }).expect(400);
+    }
+    await request(app).post('/api/v1/host/auth/login').send({ email: 'bad', password: '' }).expect(429);
   });
 
   it('allows credentialed CORS preflight for private document PUT uploads', async () => {

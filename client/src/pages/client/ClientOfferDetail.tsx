@@ -54,7 +54,7 @@ export const ClientOfferDetail: React.FC = () => {
     } catch (e) { addToast('error', e instanceof Error ? e.message : 'Message could not be sent.'); }
   };
 
-  const totalAmount = offer.price + offer.deliveryCost;
+  const totalAmount = offer.price * offer.quantity + offer.deliveryCost;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-16">
@@ -170,8 +170,8 @@ export const ClientOfferDetail: React.FC = () => {
 
             <div className="space-y-2.5 text-xs pb-4 border-b border-border">
               <div className="flex justify-between text-text-secondary">
-                <span>Part Price (Qty {offer.quantity}):</span>
-                <span className="font-bold text-navy-900">{formatCurrency(offer.price)}</span>
+                <span>Part Price ({formatCurrency(offer.price)} × {offer.quantity}):</span>
+                <span className="font-bold text-navy-900">{formatCurrency(offer.price * offer.quantity)}</span>
               </div>
               <div className="flex justify-between text-text-secondary">
                 <span>Delivery ({offer.deliveryTime}):</span>

@@ -43,7 +43,7 @@ export const HostSettings: React.FC = () => {
       <div>
         <h1 className="text-2xl font-extrabold text-navy-900">Platform Settings & Policies</h1>
         <p className="text-sm text-text-secondary">
-          Save platform policy values. Payment and notification integrations are not connected, so several settings are stored but not yet applied.
+          Commission, escrow, currency, and email-alert values are policy settings only. Contact-detail restrictions are enforced by the messaging API; payment and notification integrations are not connected.
         </p>
       </div>
 
@@ -75,7 +75,7 @@ export const HostSettings: React.FC = () => {
             </div>
 
             <div>
-              <label className="label">Escrow Guarantee Duration (Hours)</label>
+              <label className="label">Escrow Policy Duration (Hours)</label>
               <input
                 type="number"
                 min="12"
@@ -111,7 +111,7 @@ export const HostSettings: React.FC = () => {
               <div>
                 <p className="text-xs font-bold text-navy-900">Enforce Contextual Communication Only</p>
                 <p className="text-[11px] text-text-secondary mt-0.5">
-                  Strictly hide buyer/seller phone numbers, WhatsApp, and external links to keep transactions guaranteed on-platform.
+                  Block phone numbers, email addresses, social handles, and external contact links in Client and Seller marketplace messages. This does not guarantee a transaction or provide buyer protection.
                 </p>
               </div>
             </label>

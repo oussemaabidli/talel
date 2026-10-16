@@ -67,7 +67,7 @@ const App: React.FC = () => {
             isAuthenticated ? <Navigate to="/client/dashboard" /> : <LoginPage />
           } />
 
-          <Route path="/client" element={<ClientLayout />}>
+          <Route path="/client" element={isAuthenticated ? <ClientLayout /> : <Navigate to="/" replace />}>
             <Route index element={<Navigate to="dashboard" />} />
             <Route path="dashboard" element={<ClientDashboard />} />
             <Route path="requests" element={<ClientRequests />} />

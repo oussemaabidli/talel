@@ -154,7 +154,7 @@ export const ClientRequests: React.FC = () => {
                       </p>
                     </td>
                     <td className="py-3.5 px-4 text-xs font-semibold text-text-primary">
-                      {req.minBudget} - {req.maxBudget} DA
+                      {req.minBudget} - {req.maxBudget} TND
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <button
