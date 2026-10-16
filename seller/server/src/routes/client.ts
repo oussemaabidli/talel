@@ -11,6 +11,7 @@ import { contactPolicyError, messageContactPolicyViolation } from '../messaging/
 
 export const clientRouter = Router();
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again later.' } } });
+const communicationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many marketplace submissions. Try again later.' } } });
 const email = z.string().trim().email().max(254).transform(v => v.toLowerCase());
 const clientSignup = z.object({ email, password: z.string().min(10).max(128), name: z.string().trim().min(1).max(100), phone: z.string().trim().max(32).optional(), address: z.string().trim().max(300).optional(), city: z.string().trim().max(100).optional() });
 const login = z.object({ email, password: z.string().min(1).max(128) });
@@ -52,11 +53,11 @@ clientRouter.get('/categories', async (_req, res, next) => { try { res.json({ da
 const requestInput = z.object({ partName: z.string().trim().min(1).max(160), category: z.string().trim().min(1).max(80), oemReference: z.string().trim().max(100).optional(), brand: z.string().trim().min(1).max(100).optional(), vehicleMake: z.string().trim().min(1).max(80).optional(), vehicleModel: z.string().trim().min(1).max(80).optional(), vehicleYear: z.number().int().min(1900).max(2100).optional(), condition: z.nativeEnum(PartCondition).default(PartCondition.EITHER), quantity: z.number().int().min(1).max(10000).default(1), minBudget: z.number().finite().nonnegative().max(999999999).optional(), maxBudget: z.number().finite().nonnegative().max(999999999).optional(), location: z.string().trim().min(1).max(150), deliveryMethod: z.enum(['delivery','pickup','both']).optional(), description: z.string().max(4000).optional() }).refine(v => v.minBudget === undefined || v.maxBudget === undefined || v.minBudget <= v.maxBudget, { message: 'Minimum budget must not exceed maximum budget.' });
 const requestFields = { id: true, clientId: true, partName: true, category: true, oemReference: true, brand: true, vehicleMake: true, vehicleModel: true, vehicleYear: true, condition: true, quantity: true, minBudget: true, maxBudget: true, location: true, deliveryMethod: true, description: true, status: true, createdAt: true, updatedAt: true, _count: { select: { offers: true } } } as const;
 clientRouter.get('/requests', async (req, res, next) => { try { const data = await prisma.marketplaceRequest.findMany({ where: { clientId: id(req) }, select: requestFields, orderBy: { createdAt: 'desc' } }); res.json({ data }); } catch (e) { next(e); } });
-clientRouter.post('/requests', async (req, res, next) => { try { const p = requestInput.parse(req.body); const category = await prisma.marketplaceCategory.findFirst({ where: { name: p.category, isActive: true }, select: { id: true } }); if (!category) return res.status(422).json({ error: { code: 'INVALID_CATEGORY', message: 'Choose an active marketplace category.' } }); if (await messageContactPolicyViolation(`${p.partName}\n${p.description ?? ''}`)) return res.status(422).json(contactPolicyError); const data = await prisma.marketplaceRequest.create({ data: { ...p, clientId: id(req), minBudget: p.minBudget === undefined ? undefined : new Prisma.Decimal(p.minBudget), maxBudget: p.maxBudget === undefined ? undefined : new Prisma.Decimal(p.maxBudget) }, select: requestFields }); res.status(201).json({ data }); } catch (e) { next(e); } });
+clientRouter.post('/requests', communicationLimiter, async (req, res, next) => { try { const p = requestInput.parse(req.body); const category = await prisma.marketplaceCategory.findFirst({ where: { name: p.category, isActive: true }, select: { id: true } }); if (!category) return res.status(422).json({ error: { code: 'INVALID_CATEGORY', message: 'Choose an active marketplace category.' } }); if (await messageContactPolicyViolation(p)) return res.status(422).json(contactPolicyError); const data = await prisma.marketplaceRequest.create({ data: { ...p, clientId: id(req), minBudget: p.minBudget === undefined ? undefined : new Prisma.Decimal(p.minBudget), maxBudget: p.maxBudget === undefined ? undefined : new Prisma.Decimal(p.maxBudget) }, select: requestFields }); res.status(201).json({ data }); } catch (e) { next(e); } });
 clientRouter.get('/requests/:requestId', async (req, res, next) => {
   try {
     const data = await prisma.marketplaceRequest.findFirst({
-      where: { id: req.params.requestId, clientId: id(req) },
+      where: { id: String(req.params.requestId), clientId: id(req) },
       select: {
         ...requestFields,
         offers: {
@@ -74,13 +75,41 @@ clientRouter.get('/requests/:requestId', async (req, res, next) => {
     res.json({ data });
   } catch (e) { next(e); }
 });
-clientRouter.patch('/requests/:requestId', async (req, res, next) => { try { const p = requestInput.partial().parse(req.body); const request = await prisma.marketplaceRequest.findFirst({ where: { id: req.params.requestId, clientId: id(req), status: RequestStatus.PUBLISHED, offers: { none: {} } }, select: { id: true, minBudget: true, maxBudget: true } }); if (!request) return res.status(409).json({ error: { code: 'REQUEST_LOCKED', message: 'Only requests without offers can be edited.' } }); if (p.category !== undefined && !await prisma.marketplaceCategory.findFirst({ where: { name: p.category, isActive: true }, select: { id: true } })) return res.status(422).json({ error: { code: 'INVALID_CATEGORY', message: 'Choose an active marketplace category.' } }); if (await messageContactPolicyViolation(`${p.partName ?? ''}\n${p.description ?? ''}`)) return res.status(422).json(contactPolicyError); const minBudget = p.minBudget ?? request.minBudget?.toNumber(); const maxBudget = p.maxBudget ?? request.maxBudget?.toNumber(); if (minBudget !== undefined && maxBudget !== undefined && minBudget > maxBudget) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Minimum budget must not exceed maximum budget.' } }); const data = await prisma.marketplaceRequest.update({ where: { id: request.id }, data: { ...p, ...(p.minBudget !== undefined ? { minBudget: new Prisma.Decimal(p.minBudget) } : {}), ...(p.maxBudget !== undefined ? { maxBudget: new Prisma.Decimal(p.maxBudget) } : {}) }, select: requestFields }); res.json({ data }); } catch (e) { next(e); } });
-clientRouter.post('/requests/:requestId/cancel', async (req, res, next) => { try { const result = await prisma.marketplaceRequest.updateMany({ where: { id: req.params.requestId, clientId: id(req), status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } }, data: { status: RequestStatus.CANCELLED } }); if (!result.count) return res.status(409).json({ error: { code: 'REQUEST_NOT_CANCELLABLE', message: 'This request can no longer be cancelled.' } }); res.json({ data: { id: req.params.requestId, status: RequestStatus.CANCELLED } }); } catch (e) { next(e); } });
+clientRouter.patch('/requests/:requestId', communicationLimiter, async (req, res, next) => { try { const p = requestInput.partial().parse(req.body); const request = await prisma.marketplaceRequest.findFirst({ where: { id: String(req.params.requestId), clientId: id(req), status: RequestStatus.PUBLISHED, offers: { none: {} } }, select: { id: true, minBudget: true, maxBudget: true } }); if (!request) return res.status(409).json({ error: { code: 'REQUEST_LOCKED', message: 'Only requests without offers can be edited.' } }); if (p.category !== undefined && !await prisma.marketplaceCategory.findFirst({ where: { name: p.category, isActive: true }, select: { id: true } })) return res.status(422).json({ error: { code: 'INVALID_CATEGORY', message: 'Choose an active marketplace category.' } }); if (await messageContactPolicyViolation(p)) return res.status(422).json(contactPolicyError); const minBudget = p.minBudget ?? request.minBudget?.toNumber(); const maxBudget = p.maxBudget ?? request.maxBudget?.toNumber(); if (minBudget !== undefined && maxBudget !== undefined && minBudget > maxBudget) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Minimum budget must not exceed maximum budget.' } }); const data = await prisma.marketplaceRequest.update({ where: { id: request.id }, data: { ...p, ...(p.minBudget !== undefined ? { minBudget: new Prisma.Decimal(p.minBudget) } : {}), ...(p.maxBudget !== undefined ? { maxBudget: new Prisma.Decimal(p.maxBudget) } : {}) }, select: requestFields }); res.json({ data }); } catch (e) { next(e); } });
+clientRouter.post('/requests/:requestId/cancel', async (req, res, next) => {
+  try {
+    const cancelled = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.marketplaceRequest.updateMany({
+        where: { id: String(req.params.requestId), clientId: id(req), status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } },
+        data: { status: RequestStatus.CANCELLED },
+      });
+      if (!claimed.count) return false;
+
+      const pending = await tx.offer.findMany({
+        where: { requestId: String(req.params.requestId), status: 'PENDING' },
+        select: { id: true, sellerId: true, partName: true },
+      });
+      if (pending.length) {
+        await tx.offer.updateMany({ where: { id: { in: pending.map((offer) => offer.id) }, status: 'PENDING' }, data: { status: 'REJECTED' } });
+        await tx.notification.createMany({ data: pending.map((offer) => ({
+          userId: offer.sellerId,
+          type: 'request_cancelled',
+          title: 'Request cancelled',
+          message: `The client cancelled the request for ${offer.partName}; your pending offer is no longer actionable.`,
+          link: `/seller/offers/${offer.id}`,
+        })) });
+      }
+      return true;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (!cancelled) return res.status(409).json({ error: { code: 'REQUEST_NOT_CANCELLABLE', message: 'This request can no longer be cancelled.' } });
+    res.json({ data: { id: String(req.params.requestId), status: RequestStatus.CANCELLED } });
+  } catch (e) { next(e); }
+});
 
 clientRouter.get('/offers', async (req, res, next) => { try { const data = await prisma.offer.findMany({ where: { request: { clientId: id(req) } }, include: { seller: { select: { id: true, profile: { select: { shopName: true, verificationStatus: true, city: true } } } }, request: { select: { id: true, partName: true, category: true, vehicleMake: true, vehicleModel: true, vehicleYear: true } } }, orderBy: { createdAt: 'desc' } }); res.json({ data }); } catch (e) { next(e); } });
 clientRouter.post('/offers/:offerId/conversation', async (req, res, next) => {
   try {
-    const offer = await prisma.offer.findFirst({ where: { id: req.params.offerId, request: { clientId: id(req) } }, select: { sellerId: true, requestId: true } });
+    const offer = await prisma.offer.findFirst({ where: { id: String(req.params.offerId), request: { clientId: id(req) } }, select: { sellerId: true, requestId: true } });
     if (!offer) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Offer not found.' } });
     const existing = await prisma.conversation.findFirst({ where: { requestId: offer.requestId, participants: { some: { userId: id(req) } }, AND: [{ participants: { some: { userId: offer.sellerId } } }] }, select: { id: true } });
     if (existing) return res.json({ data: existing });
@@ -88,11 +117,11 @@ clientRouter.post('/offers/:offerId/conversation', async (req, res, next) => {
     res.status(201).json({ data: conversation });
   } catch (e) { next(e); }
 });
-clientRouter.post('/offers/:offerId/reject', async (req, res, next) => { try { const offer = await prisma.offer.findFirst({ where: { id: req.params.offerId, status: 'PENDING', request: { clientId: id(req), status: { in: ['PUBLISHED','OFFERS_RECEIVED'] } } }, select: { id: true, sellerId: true, partName: true } }); if (!offer) return res.status(409).json({ error: { code: 'OFFER_NOT_ACTIONABLE', message: 'This offer can no longer be rejected.' } }); const result = await prisma.$transaction(async tx => { const changed = await tx.offer.updateMany({ where: { id: offer.id, status: 'PENDING' }, data: { status: 'REJECTED' } }); if (!changed.count) return false; await tx.notification.create({ data: { userId: offer.sellerId, type: 'offer_rejected', title: 'Offer rejected', message: `The client rejected your offer for ${offer.partName}.`, link: `/seller/offers/${offer.id}` } }); return true; }); if (!result) return res.status(409).json({ error: { code: 'OFFER_NOT_ACTIONABLE', message: 'This offer can no longer be rejected.' } }); res.json({ data: { id: offer.id, status: 'REJECTED' } }); } catch (e) { next(e); } });
+clientRouter.post('/offers/:offerId/reject', async (req, res, next) => { try { const offer = await prisma.offer.findFirst({ where: { id: String(req.params.offerId), status: 'PENDING', request: { clientId: id(req), status: { in: ['PUBLISHED','OFFERS_RECEIVED'] } } }, select: { id: true, sellerId: true, partName: true } }); if (!offer) return res.status(409).json({ error: { code: 'OFFER_NOT_ACTIONABLE', message: 'This offer can no longer be rejected.' } }); const result = await prisma.$transaction(async tx => { const changed = await tx.offer.updateMany({ where: { id: offer.id, status: 'PENDING' }, data: { status: 'REJECTED' } }); if (!changed.count) return false; await tx.notification.create({ data: { userId: offer.sellerId, type: 'offer_rejected', title: 'Offer rejected', message: `The client rejected your offer for ${offer.partName}.`, link: `/seller/offers/${offer.id}` } }); return true; }); if (!result) return res.status(409).json({ error: { code: 'OFFER_NOT_ACTIONABLE', message: 'This offer can no longer be rejected.' } }); res.json({ data: { id: offer.id, status: 'REJECTED' } }); } catch (e) { next(e); } });
 clientRouter.post('/offers/:offerId/accept', async (req, res, next) => {
   try {
     const order = await prisma.$transaction(async tx => {
-      const offer = await tx.offer.findFirst({ where: { id: req.params.offerId, status: 'PENDING', request: { clientId: id(req), status: { in: ['PUBLISHED','OFFERS_RECEIVED'] } }, seller: { isActive: true, profile: { is: { verificationStatus: 'verified' } } } }, include: { request: true } });
+      const offer = await tx.offer.findFirst({ where: { id: String(req.params.offerId), status: 'PENDING', request: { clientId: id(req), status: { in: ['PUBLISHED','OFFERS_RECEIVED'] } }, seller: { isActive: true, profile: { is: { verificationStatus: 'verified' } } } }, include: { request: true } });
       if (!offer) throw Object.assign(new Error('Offer is unavailable.'), { status: 409, code: 'OFFER_NOT_ACTIONABLE' });
       const claimed = await tx.marketplaceRequest.updateMany({ where: { id: offer.requestId, clientId: id(req), status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } }, data: { status: RequestStatus.OFFER_ACCEPTED } });
       if (!claimed.count) throw Object.assign(new Error('Another offer was already accepted.'), { status: 409, code: 'OFFER_NOT_ACTIONABLE' });
@@ -110,11 +139,11 @@ clientRouter.post('/offers/:offerId/accept', async (req, res, next) => {
 });
 
 clientRouter.get('/orders', async (req, res, next) => { try { const data = await prisma.order.findMany({ where: { request: { clientId: id(req) } }, include: { offer: true, seller: { select: { id: true, profile: { select: { shopName: true } } } }, request: { select: { partName: true, location: true, deliveryMethod: true, quantity: true } }, events: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } }); res.json({ data }); } catch (e) { next(e); } });
-clientRouter.get('/orders/:orderId', async (req, res, next) => { try { const data = await prisma.order.findFirst({ where: { id: req.params.orderId, request: { clientId: id(req) } }, include: { offer: true, seller: { select: { id: true, profile: { select: { shopName: true, city: true } } } }, request: true, events: { orderBy: { createdAt: 'asc' } } } }); if (!data) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Order not found.' } }); res.json({ data }); } catch (e) { next(e); } });
+clientRouter.get('/orders/:orderId', async (req, res, next) => { try { const data = await prisma.order.findFirst({ where: { id: String(req.params.orderId), request: { clientId: id(req) } }, include: { offer: true, seller: { select: { id: true, profile: { select: { shopName: true, city: true } } } }, request: true, events: { orderBy: { createdAt: 'asc' } } } }); if (!data) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Order not found.' } }); res.json({ data }); } catch (e) { next(e); } });
 clientRouter.post('/orders/:orderId/cancel', async (req, res, next) => {
   try {
     const order = await prisma.$transaction(async tx => {
-      const current = await tx.order.findFirst({ where: { id: req.params.orderId, request: { clientId: id(req) }, status: { in: ['OFFER_ACCEPTED','SELLER_CONFIRMED'] } }, select: { id: true, requestId: true, sellerId: true } });
+      const current = await tx.order.findFirst({ where: { id: String(req.params.orderId), request: { clientId: id(req) }, status: { in: ['OFFER_ACCEPTED','SELLER_CONFIRMED'] } }, select: { id: true, requestId: true, sellerId: true } });
       if (!current) throw Object.assign(new Error('This order is no longer eligible for cancellation.'), { code: 'ORDER_NOT_CANCELLABLE' });
       const updated = await tx.order.updateMany({ where: { id: current.id, status: { in: ['OFFER_ACCEPTED','SELLER_CONFIRMED'] } }, data: { status: 'CANCELLED' } });
       if (!updated.count) throw Object.assign(new Error('This order is no longer eligible for cancellation.'), { code: 'ORDER_NOT_CANCELLABLE' });
@@ -137,12 +166,13 @@ clientRouter.get('/conversations', async (req, res, next) => {
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
     res.json({ data });
   } catch (e) { next(e); }
 });
-clientRouter.get('/conversations/:conversationId/messages', async (req, res, next) => { try { const member = await prisma.conversationParticipant.findUnique({ where: { conversationId_userId: { conversationId: req.params.conversationId, userId: id(req) } } }); if (!member) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Conversation not found.' } }); res.json({ data: await prisma.message.findMany({ where: { conversationId: member.conversationId }, orderBy: { createdAt: 'asc' } }) }); } catch (e) { next(e); } });
-clientRouter.post('/conversations/:conversationId/messages', async (req, res, next) => { try { const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(req.body); const member = await prisma.conversationParticipant.findUnique({ where: { conversationId_userId: { conversationId: req.params.conversationId, userId: id(req) } } }); if (!member) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Conversation not found.' } }); if (await messageContactPolicyViolation(body)) return res.status(422).json(contactPolicyError); res.status(201).json({ data: await prisma.message.create({ data: { conversationId: member.conversationId, senderId: id(req), body } }) }); } catch (e) { next(e); } });
+clientRouter.get('/conversations/:conversationId/messages', async (req, res, next) => { try { const member = await prisma.conversationParticipant.findUnique({ where: { conversationId_userId: { conversationId: String(req.params.conversationId), userId: id(req) } } }); if (!member) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Conversation not found.' } }); res.json({ data: await prisma.message.findMany({ where: { conversationId: member.conversationId }, orderBy: { createdAt: 'asc' }, take: 500 }) }); } catch (e) { next(e); } });
+clientRouter.post('/conversations/:conversationId/messages', communicationLimiter, async (req, res, next) => { try { const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(req.body); const member = await prisma.conversationParticipant.findUnique({ where: { conversationId_userId: { conversationId: String(req.params.conversationId), userId: id(req) } } }); if (!member) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Conversation not found.' } }); if (await messageContactPolicyViolation(body)) return res.status(422).json(contactPolicyError); res.status(201).json({ data: await prisma.message.create({ data: { conversationId: member.conversationId, senderId: id(req), body } }) }); } catch (e) { next(e); } });
 clientRouter.get('/notifications', async (req, res, next) => { try { res.json({ data: await prisma.notification.findMany({ where: { userId: id(req) }, orderBy: { createdAt: 'desc' }, take: 100 }) }); } catch (e) { next(e); } });
 clientRouter.patch('/notifications/read-all', async (req, res, next) => { try { const result = await prisma.notification.updateMany({ where: { userId: id(req), readAt: null }, data: { readAt: new Date() } }); res.json({ data: { updated: result.count } }); } catch (e) { next(e); } });
-clientRouter.patch('/notifications/:notificationId/read', async (req, res, next) => { try { const result = await prisma.notification.updateMany({ where: { id: req.params.notificationId, userId: id(req) }, data: { readAt: new Date() } }); if (!result.count) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } }); res.status(204).end(); } catch (e) { next(e); } });
+clientRouter.patch('/notifications/:notificationId/read', async (req, res, next) => { try { const result = await prisma.notification.updateMany({ where: { id: String(req.params.notificationId), userId: id(req) }, data: { readAt: new Date() } }); if (!result.count) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } }); res.status(204).end(); } catch (e) { next(e); } });

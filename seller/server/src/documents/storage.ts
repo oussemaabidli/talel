@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,4 +43,29 @@ export async function deletePrivateDocument(sellerId: string, storageName: strin
   if (!/^[a-f0-9]{48}\.(pdf|jpg|png|webp)$/.test(storageName)) return;
   const sellerFolder = createHash('sha256').update(sellerId).digest('hex').slice(0, 32);
   await rm(path.join(storageRoot, sellerFolder, storageName), { force: true });
+}
+
+/** Removes old files left unreferenced by interrupted uploads/replacements/deletions. */
+export async function cleanupOrphanedPrivateDocuments(
+  referencedStorageNames: ReadonlySet<string>,
+  root = storageRoot,
+  minimumAgeMs = 24 * 60 * 60 * 1000,
+): Promise<number> {
+  let removed = 0;
+  let folders;
+  try { folders = await readdir(root, { withFileTypes: true }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0; throw error; }
+  for (const folder of folders) {
+    if (!folder.isDirectory() || !/^[a-f0-9]{32}$/.test(folder.name)) continue;
+    const directory = path.join(root, folder.name);
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (!entry.isFile() || !/^[a-f0-9]{48}\.(pdf|jpg|png|webp)$/.test(entry.name) || referencedStorageNames.has(entry.name)) continue;
+      const filePath = path.join(directory, entry.name);
+      const details = await stat(filePath);
+      if (Date.now() - details.mtimeMs < minimumAgeMs) continue;
+      await rm(filePath, { force: true });
+      removed++;
+    }
+  }
+  return removed;
 }

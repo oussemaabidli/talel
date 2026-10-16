@@ -99,6 +99,7 @@ export function getStatusLabel(status: string): string {
     preparing: 'Preparing',
     ready: 'Ready',
     delivery: 'Shipped',
+    dispatched: 'Dispatched',
     processing: 'Processing',
     refunded: 'Refunded',
     failed: 'Failed',

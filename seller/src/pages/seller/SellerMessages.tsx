@@ -27,15 +27,32 @@ export const SellerMessages: React.FC = () => {
         return { id: String(raw.id), contextType, contextId, contextLabel: `${contextType === 'order' ? 'Order' : 'Request'} #${contextId}`, participants: (raw.participants as Array<{ userId: string }> || []).map((participant) => ({ id: participant.userId, name: participant.userId === user.data.id ? 'You' : 'Marketplace participant', role: participant.userId === user.data.id ? 'seller' as const : 'client' as const, avatar: '' })), messages: messages.map((message) => { const mine = message.senderId === user.data.id; return { id: String(message.id), contextType, contextId, contextLabel: `${contextType} #${contextId}`, senderId: String(message.senderId), senderName: mine ? 'You' : 'Marketplace participant', senderRole: mine ? 'seller' as const : 'client' as const, senderAvatar: '', content: String(message.body), timestamp: String(message.createdAt), isRead: false }; }), lastMessage: String(messages.length ? messages[messages.length - 1]?.body : 'No messages yet'), lastMessageTime: String(messages.length ? messages[messages.length - 1]?.createdAt : raw.createdAt), unreadCount: 0 };
       });
       setConversations(mapped); setActiveConvId((current) => mapped.some((item) => item.id === current) ? current : mapped[0]?.id || ''); useStore.setState({ conversations: mapped }); setError('');
-    } catch {
-      const storeConvs = useStore.getState().conversations;
-      setConversations(storeConvs);
-      setActiveConvId((current) => storeConvs.some((item) => item.id === current) ? current : storeConvs[0]?.id || '');
-      setError('');
+    } catch (error) {
+      setConversations([]);
+      setActiveConvId('');
+      setError(error instanceof ApiError ? error.message : 'Could not load conversations from the Talel server.');
     }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void loadConversations(); }, [loadConversations]);
+
+  useEffect(() => {
+    if (!activeConvId) return;
+    let current = true;
+    api.get<{ data: Array<Record<string, unknown>> }>(`/seller/conversations/${encodeURIComponent(activeConvId)}/messages`).then(({ data }) => {
+      if (!current) return;
+      const conversation = sellerConversations.find((item) => item.id === activeConvId);
+      if (!conversation) return;
+      const messages = data.map((message) => {
+        const mine = String(message.senderId) === conversation.participants.find((participant) => participant.role === 'seller')?.id;
+        return { id: String(message.id), contextType: conversation.contextType, contextId: conversation.contextId, contextLabel: conversation.contextLabel, senderId: String(message.senderId), senderName: mine ? 'You' : 'Marketplace participant', senderRole: mine ? 'seller' as const : 'client' as const, senderAvatar: '', content: String(message.body), timestamp: String(message.createdAt), isRead: false };
+      });
+      setConversations((items) => items.map((item) => item.id === activeConvId ? { ...item, messages } : item));
+    }).catch((error) => {
+      if (current) addToast('error', error instanceof ApiError ? error.message : 'Could not load conversation history.');
+    });
+    return () => { current = false; };
+  }, [activeConvId, addToast]);
 
   const activeConversation = sellerConversations.find((c) => c.id === activeConvId);
 
@@ -50,24 +67,8 @@ export const SellerMessages: React.FC = () => {
       const newMessage: Message = { id: data.id, contextType: activeConversation.contextType, contextId: activeConversation.contextId, contextLabel: activeConversation.contextLabel, senderId: data.senderId, senderName: 'You', senderRole: 'seller', senderAvatar: '', content: data.body, timestamp: data.createdAt, isRead: false };
       setConversations((items) => items.map((item) => item.id === activeConversation.id ? { ...item, messages: [...item.messages, newMessage], lastMessage: newMessage.content, lastMessageTime: newMessage.timestamp } : item));
       setInputText(''); addToast('success', 'Message sent.');
-    } catch {
-      const newMessage: Message = {
-        id: `msg-${Date.now()}`,
-        contextType: activeConversation.contextType,
-        contextId: activeConversation.contextId,
-        contextLabel: activeConversation.contextLabel,
-        senderId: 'seller-1',
-        senderName: 'You',
-        senderRole: 'seller',
-        senderAvatar: '',
-        content: inputText.trim(),
-        timestamp: new Date().toISOString(),
-        isRead: false
-      };
-      setConversations((items) => items.map((item) => item.id === activeConversation.id ? { ...item, messages: [...item.messages, newMessage], lastMessage: newMessage.content, lastMessageTime: newMessage.timestamp } : item));
-      useStore.getState().addMessage(activeConversation.id, newMessage);
-      setInputText('');
-      addToast('success', 'Message sent.');
+    } catch (error) {
+      addToast('error', error instanceof ApiError ? error.message : 'Message could not be sent. Try again.');
     }
   };
 

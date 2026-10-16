@@ -42,13 +42,13 @@ const App: React.FC = () => {
       const offers = rawOffers.map(offerMap);
       const orders = rawOrders.map((o: any) => ({ ...o, clientId: id, clientName: clientProfile?.name ?? '', sellerName: o.seller?.profile?.shopName ?? '', sellerShop: o.seller?.profile?.shopName ?? 'Seller', partName: o.request?.partName ?? '', partBrand: o.offer?.brand ?? '', referenceNumber: o.offer?.referenceNumber ?? '', condition: String(o.offer?.condition ?? 'EITHER').toLowerCase(), quantity: o.offer?.quantity ?? 1, price: Number(o.offer?.price ?? 0), deliveryCost: Number(o.offer?.deliveryFee ?? 0), totalAmount: Number(o.totalAmount), deliveryMethod: o.request?.deliveryMethod ?? 'delivery', location: o.request?.location ?? '', status: String(o.status).toLowerCase().replace('dispatched','delivery'), timeline: (o.events ?? []).map((event: any) => ({ status: String(event.status).toLowerCase().replace('dispatched','delivery'), label: String(event.status).replaceAll('_',' '), date: event.createdAt, description: event.note, completed: true })) }));
       const clientNotifications = rawNotifications.map((n: any) => ({ ...n, isRead: !!n.readAt }));
-      const conversations = await Promise.all(rawConversations.map(async (c: any) => {
-        const rawMessages = await clientApiRoutes.messages(c.id);
+      const conversations = rawConversations.map((c: any) => {
+        const rawMessages = c.messages ?? [];
         const participants = c.participants.map((p: any) => ({ id: p.user.id, name: p.user.clientProfile?.name ?? p.user.profile?.shopName ?? p.user.profile?.name ?? 'Talel member', role: String(p.user.role).toLowerCase(), avatar: '' }));
         const contextType = (c.orderId ? 'order' : 'request') as 'order'|'request';
         const messages = rawMessages.map((m: any) => { const sender = participants.find((p: any) => p.id === m.senderId); return { id: m.id, contextType, contextId: c.orderId ?? c.requestId ?? c.id, contextLabel: c.request?.partName ?? `Order ${c.orderId ?? ''}`, senderId: m.senderId, senderName: sender?.name ?? 'Talel member', senderRole: sender?.role ?? 'seller', senderAvatar: '', content: m.body, timestamp: m.createdAt, isRead: true }; });
         return { id: c.id, contextType, contextId: c.orderId ?? c.requestId ?? c.id, contextLabel: c.request?.partName ?? `Order ${c.orderId ?? ''}`, participants, messages, lastMessage: messages.at(-1)?.content ?? '', lastMessageTime: messages.at(-1)?.timestamp ?? c.createdAt, unreadCount: 0 };
-      }));
+      });
       hydrateClientData({ requests, offers, orders, clientNotifications, conversations });
       } catch (error) {
         hydrateClientData({ requests: [], offers: [], orders: [], clientNotifications: [], conversations: [] });

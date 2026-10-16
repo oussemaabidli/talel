@@ -3,13 +3,15 @@ import { useStore } from '../../store/useStore';
 import { SearchInput, StatusBadge } from '../../components/ui';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { CreditCard, DollarSign, ArrowUpDown, TrendingUp, ShieldCheck } from 'lucide-react';
+import { loadHostTransactions } from '../../api/host';
 
 export const HostTransactions: React.FC = () => {
-  const { transactions } = useStore();
+  const { transactions, transactionPagination, transactionTotals } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const totalGMV = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalGMV = Number(transactionTotals.grossOrderValueTnd);
+  const completedValue = Number(transactionTotals.completedOrderValueTnd);
 
   const filteredTransactions = transactions.filter(t => {
     if (statusFilter !== 'all' && t.status !== statusFilter) return false;
@@ -35,7 +37,7 @@ export const HostTransactions: React.FC = () => {
         <div className="stat-card">
           <span className="text-xs font-semibold text-text-secondary uppercase">Gross Marketplace Order Value (GMV)</span>
           <p className="text-2xl font-extrabold text-navy-900 mt-2">{formatCurrency(totalGMV)}</p>
-          <span className="text-xs text-text-secondary">Across {transactions.length} orders</span>
+          <span className="text-xs text-text-secondary">Across {transactionTotals.orderCount} orders, excluding cancelled orders</span>
         </div>
 
         <div className="stat-card bg-green-50/50 border-green-200">
@@ -46,7 +48,7 @@ export const HostTransactions: React.FC = () => {
 
         <div className="stat-card">
           <span className="text-xs font-semibold text-text-secondary uppercase">Completed Order Value</span>
-          <p className="text-2xl font-extrabold text-navy-900 mt-2">{formatCurrency(transactions.filter((t) => t.status === 'completed').reduce((sum, t) => sum + t.amount, 0))}</p>
+          <p className="text-2xl font-extrabold text-navy-900 mt-2">{formatCurrency(completedValue)}</p>
           <span className="text-xs text-text-secondary">From completed orders</span>
         </div>
       </div>
@@ -58,13 +60,17 @@ export const HostTransactions: React.FC = () => {
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); void loadHostTransactions(1, e.target.value); }}
           className="select-field !py-2 !w-auto text-xs"
         >
           <option value="all">All Statuses</option>
+          <option value="offer_accepted">Offer accepted</option>
+          <option value="seller_confirmed">Seller confirmed</option>
+          <option value="preparing">Preparing</option>
+          <option value="ready">Ready</option>
+          <option value="dispatched">Dispatched</option>
           <option value="completed">Completed</option>
-          <option value="processing">Processing</option>
-          <option value="pending">Pending</option>
+          <option value="cancelled">Cancelled</option>
         </select>
       </div>
 
@@ -74,8 +80,7 @@ export const HostTransactions: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border text-[11px] font-semibold text-text-secondary uppercase bg-surface-secondary/50">
-                <th className="py-3 px-4">Transaction ID</th>
-                <th className="py-3 px-4">Order Ref</th>
+                <th className="py-3 px-4">Marketplace Order ID</th>
                 <th className="py-3 px-4">Buyer</th>
                 <th className="py-3 px-4">Seller</th>
                 <th className="py-3 px-4">Gross Amount</th>
@@ -90,9 +95,6 @@ export const HostTransactions: React.FC = () => {
                 <tr key={t.id} className="hover:bg-surface-secondary/40 transition-colors">
                   <td className="py-3.5 px-4 font-bold text-xs text-navy-900 font-mono">
                     #{t.id}
-                  </td>
-                  <td className="py-3.5 px-4 text-xs font-mono text-accent">
-                    #{t.orderId}
                   </td>
                   <td className="py-3.5 px-4 text-xs font-semibold text-navy-900">
                     {t.clientName}
@@ -119,6 +121,13 @@ export const HostTransactions: React.FC = () => {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-text-secondary">
+          <span>Page {transactionPagination.page} of {Math.max(1, Math.ceil(transactionPagination.total / transactionPagination.limit))} · {transactionPagination.total} orders</span>
+          <div className="flex gap-2">
+            <button className="btn-secondary px-3 py-1.5" disabled={transactionPagination.page <= 1} onClick={() => void loadHostTransactions(transactionPagination.page - 1)}>Previous</button>
+            <button className="btn-secondary px-3 py-1.5" disabled={transactionPagination.page * transactionPagination.limit >= transactionPagination.total} onClick={() => void loadHostTransactions(transactionPagination.page + 1)}>Next</button>
+          </div>
         </div>
       </div>
     </div>

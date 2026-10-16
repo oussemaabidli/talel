@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { clientApiRoutes } from '../../api/client';
 import { Avatar } from '../../components/ui';
@@ -21,6 +21,22 @@ export const ClientMessages: React.FC = () => {
   const [inputText, setInputText] = useState('');
 
   const activeConversation = clientConversations.find((c) => c.id === activeConvId);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+    let current = true;
+    clientApiRoutes.messages(activeConversation.id).then((rawMessages) => {
+      if (!current) return;
+      const messages = rawMessages.map((message: any) => {
+        const sender = activeConversation.participants.find((participant) => participant.id === message.senderId);
+        return { id: message.id, contextType: activeConversation.contextType, contextId: activeConversation.contextId, contextLabel: activeConversation.contextLabel, senderId: message.senderId, senderName: sender?.name ?? 'Talel member', senderRole: sender?.role ?? 'seller', senderAvatar: '', content: message.body, timestamp: message.createdAt, isRead: true };
+      });
+      useStore.setState((state) => ({ conversations: state.conversations.map((conversation) => conversation.id === activeConversation.id ? { ...conversation, messages, lastMessage: messages.at(-1)?.content ?? 'No messages yet', lastMessageTime: messages.at(-1)?.timestamp ?? conversation.lastMessageTime } : conversation) }));
+    }).catch((error) => {
+      if (current) addToast('error', error instanceof Error ? error.message : 'Could not load conversation history.');
+    });
+    return () => { current = false; };
+  }, [activeConvId, addToast]);
 
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);

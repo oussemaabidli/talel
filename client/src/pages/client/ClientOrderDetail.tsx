@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { clientApiRoutes } from '../../api/client';
@@ -23,6 +23,20 @@ export const ClientOrderDetail: React.FC = () => {
   const conversation = conversations.find(
     (c) => c.contextType === 'order' && c.contextId === id
   );
+
+  useEffect(() => {
+    if (!conversation) return;
+    let current = true;
+    clientApiRoutes.messages(conversation.id).then((rawMessages) => {
+      if (!current) return;
+      const messages = rawMessages.map((message: any) => {
+        const sender = conversation.participants.find((participant) => participant.id === message.senderId);
+        return { id: message.id, contextType: 'order' as const, contextId: String(id), contextLabel: `Order #${id}`, senderId: message.senderId, senderName: sender?.name ?? 'Talel member', senderRole: sender?.role ?? 'seller', senderAvatar: '', content: message.body, timestamp: message.createdAt, isRead: true };
+      });
+      useStore.setState((state) => ({ conversations: state.conversations.map((item) => item.id === conversation.id ? { ...item, messages } : item) }));
+    }).catch((error) => { if (current) addToast('error', error instanceof Error ? error.message : 'Could not load order conversation.'); });
+    return () => { current = false; };
+  }, [conversation?.id, id, addToast]);
 
   if (!order) {
     return (

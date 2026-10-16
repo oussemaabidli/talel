@@ -55,6 +55,8 @@ interface AppState {
 
   // Transactions
   transactions: Transaction[];
+  transactionPagination: { page: number; limit: number; total: number };
+  transactionTotals: { grossOrderValueTnd: string; completedOrderValueTnd: string; cancelledOrderValueTnd: string; orderCount: number };
   addTransaction: (transaction: Transaction) => void;
 
   // Conversations & Messages
@@ -376,6 +378,8 @@ export const useStore = create<AppState>()(
 
       // ---------- Transactions ----------
       transactions: mockTransactions,
+      transactionPagination: { page: 1, limit: 50, total: mockTransactions.length },
+      transactionTotals: { grossOrderValueTnd: '0', completedOrderValueTnd: '0', cancelledOrderValueTnd: '0', orderCount: mockTransactions.length },
       addTransaction: (transaction) => set((state) => ({
         transactions: [transaction, ...state.transactions]
       })),

@@ -15,7 +15,7 @@ export type PartCondition = 'new' | 'used' | 'either';
 
 export type DeliveryMethod = 'delivery' | 'pickup' | 'both';
 
-export type TransactionStatus = 'pending' | 'processing' | 'completed' | 'refunded' | 'failed';
+export type TransactionStatus = 'pending' | 'processing' | 'completed' | 'refunded' | 'failed' | 'offer_accepted' | 'seller_confirmed' | 'preparing' | 'ready' | 'dispatched' | 'cancelled';
 
 export type NotificationType = 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'order_confirmed' | 'order_preparing' | 'order_ready' | 'order_shipped' | 'order_completed' | 'request_published' | 'new_request' | 'system';
 

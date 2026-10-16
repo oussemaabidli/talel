@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
+import { Prisma } from '@prisma/client';
 import { app } from '../src/app.js';
 import { prisma } from '../src/db.js';
 import { deletePrivateDocument } from '../src/documents/storage.js';
@@ -69,6 +70,10 @@ integration('seller database authorization and business rules', () => {
       .expect(({ body }) => expect(body.error.code).toBe('INVALID_OFFER_QUANTITY'));
     await agentA.post('/api/v1/seller/offers').send({ ...offerInput, description: 'Call +216 22 345 678' }).expect(422)
       .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
+    await agentA.post('/api/v1/seller/offers').send({ ...offerInput, warranty: 'Contact seller@example.test' }).expect(422)
+      .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
+    await agentA.post('/api/v1/seller/offers').send({ ...offerInput, estimatedDelivery: 'WhatsApp me at @parts_shop' }).expect(422)
+      .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
     const first = await agentA.post('/api/v1/seller/offers').send(offerInput).expect(201);
     await agentA.post('/api/v1/seller/offers').send(offerInput).expect(409);
     const offerId = first.body.data.id as string;
@@ -99,10 +104,44 @@ integration('seller database authorization and business rules', () => {
     });
   });
 
+  it('paginates Host orders while calculating exact all-row order-value aggregates', async () => {
+    const [baselineCount, baseline] = await Promise.all([
+      prisma.order.count(),
+      prisma.order.aggregate({ _sum: { totalAmount: true }, where: { status: { not: 'CANCELLED' } } }),
+    ]);
+    const rows = Array.from({ length: 501 }, (_, index) => ({
+      index,
+      offerId: `audit-offer-${suffix}-${index}`,
+      orderId: `audit-order-${suffix}-${index}`,
+      status: index === 500 ? 'CANCELLED' as const : index === 499 ? 'COMPLETED' as const : 'OFFER_ACCEPTED' as const,
+      createdAt: new Date(Date.now() - (500 - index) * 1000),
+    }));
+    await prisma.offer.createMany({ data: rows.map(({ index, offerId }) => ({ id: offerId, sellerId: sellerA, requestId, partName: `Audit fixture ${index}`, condition: 'NEW' as const, price: 1, quantity: 1 })) });
+    await prisma.order.createMany({ data: rows.map((row) => ({ id: row.orderId, sellerId: sellerA, requestId, offerId: row.offerId, status: row.status, totalAmount: 1, createdAt: row.createdAt })) });
+
+    const firstPage = await hostAgent.get('/api/v1/host/transactions?page=1&limit=100').expect(200);
+    expect(firstPage.body.data.items).toHaveLength(100);
+    expect(firstPage.body.data.pagination).toMatchObject({ page: 1, limit: 100, total: baselineCount + 501 });
+    expect(firstPage.body.data.items.some((item: { status: string }) => item.status === 'CANCELLED')).toBe(true);
+    expect(firstPage.body.data.totals.grossOrderValueTnd).toBe(new Prisma.Decimal(baseline._sum.totalAmount?.toString() ?? '0').plus(500).toString());
+    expect(firstPage.body.data.totals.completedOrderValueTnd).toBe((await prisma.order.aggregate({ where: { status: 'COMPLETED' }, _sum: { totalAmount: true } }))._sum.totalAmount?.toString() ?? '0');
+    const cancelledPage = await hostAgent.get('/api/v1/host/transactions?page=1&limit=100&status=CANCELLED').expect(200);
+    expect(cancelledPage.body.data.items.length).toBeGreaterThanOrEqual(1);
+    expect(cancelledPage.body.data.items.every((item: { status: string }) => item.status === 'CANCELLED')).toBe(true);
+  });
+
   it('enforces the direct-contact setting on Seller message submissions', async () => {
     await agentB.post(`/api/v1/seller/conversations/${conversationId}/messages`).send({ body: 'Call +216 22 345 678' }).expect(422)
       .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
     await agentB.post(`/api/v1/seller/conversations/${conversationId}/messages`).send({ body: 'Your order is being prepared.' }).expect(201);
+    const previous = await prisma.platformSetting.findUnique({ where: { key: 'restrictDirectContact' } });
+    try {
+      await prisma.platformSetting.upsert({ where: { key: 'restrictDirectContact' }, create: { key: 'restrictDirectContact', value: false }, update: { value: false } });
+      await agentB.post(`/api/v1/seller/conversations/${conversationId}/messages`).send({ body: 'Contact me at seller@example.test' }).expect(201);
+    } finally {
+      if (previous) await prisma.platformSetting.update({ where: { key: previous.key }, data: { value: previous.value } });
+      else await prisma.platformSetting.deleteMany({ where: { key: 'restrictDirectContact' } });
+    }
   });
 
   it('submits a private Seller document, reviews it as Host, and then approves the seller', async () => {

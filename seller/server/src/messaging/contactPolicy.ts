@@ -1,12 +1,15 @@
 import { prisma } from '../db.js';
-import { containsDirectContactDetails } from './contentRules.js';
+import { hasContactDetailsInFields } from './contentRules.js';
 
-export async function messageContactPolicyViolation(body: string): Promise<boolean> {
+export async function contactPolicyViolation(fields: Record<string, unknown> | string): Promise<boolean> {
   const setting = await prisma.platformSetting.findUnique({ where: { key: 'restrictDirectContact' }, select: { value: true } });
   if (setting?.value === false) return false;
 
-  return containsDirectContactDetails(body);
+  return hasContactDetailsInFields(typeof fields === 'string' ? { body: fields } : fields);
 }
+
+// Kept as a semantic alias for message routes while all communication uses one validator.
+export const messageContactPolicyViolation = contactPolicyViolation;
 
 export const contactPolicyError = {
   error: {

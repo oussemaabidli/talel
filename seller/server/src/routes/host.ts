@@ -8,6 +8,7 @@ import { prisma } from '../db.js';
 import { env } from '../config/env.js';
 import { requireHost } from '../middleware/auth.js';
 import { readPrivateDocument } from '../documents/storage.js';
+import { sellerDocumentsMeetPolicy } from '../documents/policy.js';
 
 export const hostRouter = express.Router();
 const emailSchema = z.string().trim().email().max(254).transform((value) => value.toLowerCase());
@@ -15,6 +16,7 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
 const sessionCookie = { httpOnly: true, signed: true, sameSite: 'strict' as const, secure: env.NODE_ENV === 'production', path: '/', maxAge: env.SESSION_TTL_DAYS * 86400000 };
 const hostId = (req: express.Request) => req.hostId!;
 const hostLoginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
+const hostActionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many administrative changes. Try again later.' } } });
 
 // Host accounts are provisioned out of band. There is intentionally no Host registration route.
 hostRouter.post('/auth/login', hostLoginLimiter, async (req, res, next) => {
@@ -43,13 +45,13 @@ hostRouter.get('/dashboard', async (_req, res, next) => {
       prisma.sellerProfile.count({ where: { verificationStatus: 'pending_verification' } }),
       prisma.marketplaceRequest.count(), prisma.offer.count(), prisma.order.count(),
       prisma.order.count({ where: { status: OrderStatus.COMPLETED } }),
-      prisma.order.aggregate({ _sum: { totalAmount: true } }),
+      prisma.order.aggregate({ where: { status: { not: OrderStatus.CANCELLED } }, _sum: { totalAmount: true } }),
       prisma.order.findMany({ take: 8, orderBy: { createdAt: 'desc' }, include: { request: true, offer: { include: { seller: { include: { profile: true } } } } } }),
       prisma.marketplaceCategory.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
       prisma.hostAuditLog.findMany({ take: 8, orderBy: { createdAt: 'desc' }, include: { actor: { select: { email: true } } } }),
     ]);
     const categoryCounts = await prisma.marketplaceRequest.groupBy({ by: ['category'], _count: { _all: true }, orderBy: { _count: { category: 'desc' } }, take: 8 });
-    res.json({ data: { users, clients, sellers, pendingSellers, requests, offers, orders, completedOrders, gmvTnd: gmv._sum.totalAmount?.toString() ?? '0', recentOrders: recentOrders.map((order) => ({ ...order, sellerName: order.offer.seller.profile?.shopName ?? order.offer.seller.email, clientId: order.request.clientId })), categories: categoryCounts.map((item) => ({ name: item.category, value: item._count._all })), recentActivity } });
+    res.json({ data: { users, clients, sellers, pendingSellers, requests, offers, orders, completedOrders, grossOrderValueTnd: gmv._sum.totalAmount?.toString() ?? '0', recentOrders: recentOrders.map((order) => ({ ...order, sellerName: order.offer.seller.profile?.shopName ?? order.offer.seller.email, clientId: order.request.clientId })), categories: categoryCounts.map((item) => ({ name: item.category, value: item._count._all })), recentActivity } });
   } catch (error) { next(error); }
 });
 
@@ -78,7 +80,7 @@ hostRouter.get('/users', async (req, res, next) => {
 hostRouter.get('/users/:id/registration', async (req, res, next) => {
   try {
     const user = await prisma.user.findFirst({
-      where: { id: req.params.id, role: { in: ['CLIENT', 'SELLER'] } },
+      where: { id: String(req.params.id), role: { in: ['CLIENT', 'SELLER'] } },
       select: { id: true, email: true, phone: true, role: true, isActive: true, createdAt: true, clientProfile: true, profile: true },
     });
     if (!user) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Client or seller account not found.' } });
@@ -86,11 +88,11 @@ hostRouter.get('/users/:id/registration', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-hostRouter.patch('/users/:id/status', async (req, res, next) => {
+hostRouter.patch('/users/:id/status', hostActionLimiter, async (req, res, next) => {
   try {
     const { isActive } = z.object({ isActive: z.boolean() }).parse(req.body);
-    if (req.params.id === hostId(req)) return res.status(409).json({ error: { code: 'SELF_MODERATION', message: 'You cannot change your own Host account status.' } });
-    const target = await prisma.user.findFirst({ where: { id: req.params.id, role: { in: ['CLIENT', 'SELLER'] } }, select: { id: true, isActive: true, role: true } });
+    if (String(req.params.id) === hostId(req)) return res.status(409).json({ error: { code: 'SELF_MODERATION', message: 'You cannot change your own Host account status.' } });
+    const target = await prisma.user.findFirst({ where: { id: String(req.params.id), role: { in: ['CLIENT', 'SELLER'] } }, select: { id: true, isActive: true, role: true } });
     if (!target) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Client or seller account not found.' } });
     await prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: target.id }, data: { isActive } });
@@ -111,15 +113,15 @@ hostRouter.get('/sellers', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-hostRouter.patch('/sellers/:id/verification', async (req, res, next) => {
+hostRouter.patch('/sellers/:id/verification', hostActionLimiter, async (req, res, next) => {
   try {
     const input = z.object({ status: z.enum(['verified', 'rejected', 'pending_verification']), rejectionReason: z.string().trim().min(1).max(1000).optional() }).refine((value) => value.status !== 'rejected' || !!value.rejectionReason, { message: 'A reason is required when rejecting a seller.' }).parse(req.body);
     const { status } = input;
-    const profile = await prisma.sellerProfile.findFirst({ where: { userId: req.params.id, user: { role: 'SELLER' } }, select: { userId: true, verificationStatus: true } });
+    const profile = await prisma.sellerProfile.findFirst({ where: { userId: String(req.params.id), user: { role: 'SELLER' } }, select: { userId: true, verificationStatus: true } });
     if (!profile) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Seller profile not found.' } });
     if (status === 'verified') {
       const documents = await prisma.sellerDocument.findMany({ where: { sellerId: profile.userId }, select: { kind: true, status: true } });
-      if (!documents.some((document) => document.kind === 'addressDoc' && document.status === 'approved') || documents.some((document) => document.status !== 'approved')) return res.status(409).json({ error: { code: 'DOCUMENT_REVIEW_REQUIRED', message: 'Approve the professional address document and review every submitted document before verifying this seller.' } });
+      if (!sellerDocumentsMeetPolicy(documents)) return res.status(409).json({ error: { code: 'DOCUMENT_REVIEW_REQUIRED', message: 'Approve the required professional address document and review every submitted document before verifying this seller.' } });
     }
     await prisma.$transaction(async (tx) => {
       await tx.sellerProfile.update({ where: { userId: profile.userId }, data: { verificationStatus: status, verificationRejectionReason: status === 'rejected' ? input.rejectionReason : null } });
@@ -131,7 +133,7 @@ hostRouter.patch('/sellers/:id/verification', async (req, res, next) => {
 
 hostRouter.get('/sellers/:id/documents', async (req, res, next) => {
   try {
-    const seller = await prisma.user.findFirst({ where: { id: req.params.id, role: 'SELLER' }, select: { id: true } });
+    const seller = await prisma.user.findFirst({ where: { id: String(req.params.id), role: 'SELLER' }, select: { id: true } });
     if (!seller) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Seller not found.' } });
     const data = await prisma.sellerDocument.findMany({ where: { sellerId: seller.id }, select: { id: true, kind: true, originalName: true, mimeType: true, size: true, status: true, rejectionReason: true, submittedAt: true, reviewedAt: true, reviewer: { select: { email: true } } }, orderBy: { submittedAt: 'desc' } });
     res.set('Cache-Control', 'private, no-store').json({ data });
@@ -140,17 +142,17 @@ hostRouter.get('/sellers/:id/documents', async (req, res, next) => {
 
 hostRouter.get('/sellers/:sellerId/documents/:documentId/file', async (req, res, next) => {
   try {
-    const document = await prisma.sellerDocument.findFirst({ where: { id: req.params.documentId, sellerId: req.params.sellerId }, select: { storageName: true, originalName: true, mimeType: true, sellerId: true } });
+    const document = await prisma.sellerDocument.findFirst({ where: { id: String(req.params.documentId), sellerId: String(req.params.sellerId) }, select: { storageName: true, originalName: true, mimeType: true, sellerId: true } });
     if (!document) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Document not found.' } });
     const bytes = await readPrivateDocument(document.sellerId, document.storageName);
     res.set({ 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="document"; filename*=UTF-8''${encodeURIComponent(document.originalName)}` }).type(document.mimeType).send(bytes);
   } catch (error) { next(error); }
 });
 
-hostRouter.patch('/sellers/:sellerId/documents/:documentId/review', async (req, res, next) => {
+hostRouter.patch('/sellers/:sellerId/documents/:documentId/review', hostActionLimiter, async (req, res, next) => {
   try {
     const input = z.object({ status: z.enum(['approved', 'rejected']), rejectionReason: z.string().trim().min(1).max(1000).optional() }).refine((value) => value.status !== 'rejected' || !!value.rejectionReason, { message: 'A reason is required when rejecting a document.' }).parse(req.body);
-    const document = await prisma.sellerDocument.findFirst({ where: { id: req.params.documentId, sellerId: req.params.sellerId }, select: { id: true, sellerId: true, kind: true, status: true } });
+    const document = await prisma.sellerDocument.findFirst({ where: { id: String(req.params.documentId), sellerId: String(req.params.sellerId) }, select: { id: true, sellerId: true, kind: true, status: true } });
     if (!document) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Document not found.' } });
     const data = await prisma.$transaction(async (tx) => {
       const updated = await tx.sellerDocument.update({ where: { id: document.id }, data: { status: input.status, rejectionReason: input.status === 'rejected' ? input.rejectionReason : null, reviewerId: hostId(req), reviewedAt: new Date() }, select: { id: true, sellerId: true, kind: true, status: true, rejectionReason: true, reviewedAt: true } });
@@ -174,10 +176,24 @@ hostRouter.get('/orders', async (_req, res, next) => {
   try { res.json({ data: await prisma.order.findMany({ take: 200, orderBy: { createdAt: 'desc' }, include: { offer: { include: { seller: { include: { profile: true } } } }, request: true, events: { orderBy: { createdAt: 'asc' } } } }) }); }
   catch (error) { next(error); }
 });
-hostRouter.get('/transactions', async (_req, res, next) => {
+hostRouter.get('/transactions', async (req, res, next) => {
   try {
-    const orders = await prisma.order.findMany({ take: 500, orderBy: { createdAt: 'desc' }, include: { request: true, offer: { include: { seller: { include: { profile: true } } } } } });
-    res.json({ data: orders.map((order) => ({ id: order.id, orderId: order.id, clientId: order.request.clientId, sellerId: order.sellerId, sellerName: order.offer.seller.profile?.shopName ?? order.offer.seller.email, amountTnd: order.totalAmount.toString(), status: order.status, createdAt: order.createdAt })) });
+    const page = z.coerce.number().int().min(1).default(1).parse(req.query.page);
+    const limit = z.coerce.number().int().min(1).max(100).default(50).parse(req.query.limit);
+    const status = z.nativeEnum(OrderStatus).optional().parse(req.query.status);
+    const where: Prisma.OrderWhereInput = status ? { status } : {};
+    const [orders, total, activeValue, completedValue, cancelledValue] = await Promise.all([
+      prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, select: { id: true, sellerId: true, status: true, totalAmount: true, createdAt: true, request: { select: { clientId: true, client: { select: { email: true, clientProfile: { select: { name: true } } } } } }, offer: { select: { seller: { select: { email: true, profile: { select: { shopName: true } } } } } } } }),
+      prisma.order.count({ where }),
+      prisma.order.aggregate({ where: { status: { not: OrderStatus.CANCELLED } }, _sum: { totalAmount: true } }),
+      prisma.order.aggregate({ where: { status: OrderStatus.COMPLETED }, _sum: { totalAmount: true } }),
+      prisma.order.aggregate({ where: { status: OrderStatus.CANCELLED }, _sum: { totalAmount: true } }),
+    ]);
+    res.json({ data: {
+      items: orders.map((order) => ({ id: order.id, orderId: order.id, clientId: order.request.clientId, clientName: order.request.client?.clientProfile?.name ?? order.request.client?.email ?? 'Unknown buyer', sellerId: order.sellerId, sellerName: order.offer.seller.profile?.shopName ?? order.offer.seller.email, amountTnd: order.totalAmount.toString(), status: order.status, createdAt: order.createdAt })),
+      pagination: { page, limit, total },
+      totals: { grossOrderValueTnd: activeValue._sum.totalAmount?.toString() ?? '0', completedOrderValueTnd: completedValue._sum.totalAmount?.toString() ?? '0', cancelledOrderValueTnd: cancelledValue._sum.totalAmount?.toString() ?? '0', orderCount: total },
+    } });
   } catch (error) { next(error); }
 });
 hostRouter.get('/activity', async (_req, res, next) => {
@@ -208,7 +224,7 @@ hostRouter.patch('/categories/:id', async (req, res, next) => {
   try {
     const input = categorySchema.partial().parse(req.body);
     const data = await prisma.$transaction(async (tx) => {
-      const category = await tx.marketplaceCategory.update({ where: { id: req.params.id }, data: input });
+      const category = await tx.marketplaceCategory.update({ where: { id: String(req.params.id) }, data: input });
       await tx.hostAuditLog.create({ data: { actorId: hostId(req), action: 'CATEGORY_UPDATED', entityType: 'category', entityId: category.id, details: input } });
       return category;
     });
@@ -217,7 +233,7 @@ hostRouter.patch('/categories/:id', async (req, res, next) => {
 });
 hostRouter.delete('/categories/:id', async (req, res, next) => {
   try {
-    const category = await prisma.marketplaceCategory.findUnique({ where: { id: req.params.id }, select: { id: true, name: true } });
+    const category = await prisma.marketplaceCategory.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true } });
     if (!category) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Category not found.' } });
     const count = await prisma.marketplaceRequest.count({ where: { category: category.name } });
     if (count > 0) return res.status(409).json({ error: { code: 'CATEGORY_IN_USE', message: 'This category is used by marketplace requests; disable it instead.' } });
@@ -235,7 +251,7 @@ hostRouter.get('/settings', async (_req, res, next) => {
 });
 hostRouter.patch('/settings/:key', async (req, res, next) => {
   try {
-    const key = z.string().regex(/^[a-z][a-z0-9_.-]{1,80}$/).parse(req.params.key);
+    const key = z.string().regex(/^[a-z][a-z0-9_.-]{1,80}$/).parse(String(req.params.key));
     const { value } = z.object({ value: z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.array(z.string().max(200)), z.record(z.string(), z.unknown())]) }).parse(req.body);
     const data = await prisma.$transaction(async (tx) => {
       const setting = await tx.platformSetting.upsert({ where: { key }, create: { key, value: value as Prisma.InputJsonValue }, update: { value: value as Prisma.InputJsonValue } });

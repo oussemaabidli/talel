@@ -12,7 +12,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:host:create": "tsx prisma/create-host.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "node tests/requireTestDatabase.mjs && vitest run tests/client.integration.test.ts tests/seller.integration.test.ts"
   },
   "keywords": [],
   "author": "",

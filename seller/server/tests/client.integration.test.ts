@@ -21,6 +21,7 @@ integration('Client isolation and competing offer acceptance', () => {
   let orderB = '';
   let conversationB = '';
   let conversationA = '';
+  const extraRequestIds: string[] = [];
   let agentA: ReturnType<typeof request.agent>;
   let agentB: ReturnType<typeof request.agent>;
   const categoryA = `Mechanical ${suffix}`;
@@ -60,6 +61,9 @@ integration('Client isolation and competing offer acceptance', () => {
     if (!clientA) return;
     await prisma.message.deleteMany({ where: { conversationId: conversationB } });
     await prisma.conversation.deleteMany({ where: { requestId: { in: [requestA, requestB] } } });
+    await prisma.order.deleteMany({ where: { requestId: { in: extraRequestIds } } });
+    await prisma.offer.deleteMany({ where: { requestId: { in: extraRequestIds } } });
+    await prisma.marketplaceRequest.deleteMany({ where: { id: { in: extraRequestIds } } });
     await prisma.order.deleteMany({ where: { requestId: { in: [requestA, requestB] } } });
     await prisma.offer.deleteMany({ where: { requestId: { in: [requestA, requestB] } } });
     await prisma.marketplaceRequest.deleteMany({ where: { id: { in: [requestA, requestB] } } });
@@ -98,6 +102,8 @@ integration('Client isolation and competing offer acceptance', () => {
       .expect(({ body }) => expect(body.error.code).toBe('INVALID_CATEGORY'));
     await agentA.post('/api/v1/client/requests').send({ partName: 'Brake pads', category: categoryA, quantity: 1, location: 'Tunis', description: 'Contact me at buyer@example.test' }).expect(422)
       .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
+    await agentA.post('/api/v1/client/requests').send({ partName: 'Contact seller at +21622345678', category: categoryA, quantity: 1, location: 'Tunis' }).expect(422)
+      .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
     await agentA.post('/api/v1/client/requests').send({ partName: 'Missing location', category: categoryA, quantity: 1 }).expect(400);
     await agentA.post('/api/v1/client/requests').send({ partName: 'Invalid quantity', category: categoryA, quantity: 0, location: 'Tunis' }).expect(400);
     await agentA.post('/api/v1/client/requests').send({ partName: 'Invalid budget', category: categoryA, quantity: 1, minBudget: 500, maxBudget: 100, location: 'Tunis' }).expect(400);
@@ -112,6 +118,59 @@ integration('Client isolation and competing offer acceptance', () => {
     await agentA.post(`/api/v1/client/conversations/${conversationA}/messages`).send({ body: 'Email me at buyer@example.test' }).expect(422)
       .expect(({ body }) => expect(body.error.code).toBe('CONTACT_DETAILS_NOT_ALLOWED'));
     await agentA.post(`/api/v1/client/conversations/${conversationA}/messages`).send({ body: 'The OEM reference is 123-456-78.' }).expect(201);
+    const previous = await prisma.platformSetting.findUnique({ where: { key: 'restrictDirectContact' } });
+    try {
+      await prisma.platformSetting.upsert({ where: { key: 'restrictDirectContact' }, create: { key: 'restrictDirectContact', value: false }, update: { value: false } });
+      await agentA.post(`/api/v1/client/conversations/${conversationA}/messages`).send({ body: 'Contact me at buyer@example.test' }).expect(201);
+    } finally {
+      if (previous) await prisma.platformSetting.update({ where: { key: previous.key }, data: { value: previous.value } });
+      else await prisma.platformSetting.deleteMany({ where: { key: 'restrictDirectContact' } });
+    }
+  });
+
+  it('cancels requests transactionally and invalidates pending offers with Seller notifications', async () => {
+    const empty = await agentA.post('/api/v1/client/requests').send({ partName: 'No offers request', category: categoryA, quantity: 1, location: 'Tunis' }).expect(201);
+    extraRequestIds.push(empty.body.data.id);
+    await agentA.post(`/api/v1/client/requests/${empty.body.data.id}/cancel`).expect(200);
+    await agentA.post(`/api/v1/client/requests/${empty.body.data.id}/cancel`).expect(409);
+
+    const withOffers = await agentA.post('/api/v1/client/requests').send({ partName: 'Request with pending offers', category: categoryA, quantity: 1, location: 'Tunis' }).expect(201);
+    const cancellationRequestId = withOffers.body.data.id as string;
+    extraRequestIds.push(cancellationRequestId);
+    const offers = await Promise.all([
+      prisma.offer.create({ data: { sellerId, requestId: cancellationRequestId, partName: 'Offer one', condition: 'NEW', price: 10 } }),
+      prisma.offer.create({ data: { sellerId: competingSellerId, requestId: cancellationRequestId, partName: 'Offer two', condition: 'NEW', price: 12 } }),
+    ]);
+    await agentA.post(`/api/v1/client/requests/${cancellationRequestId}/cancel`).expect(200);
+    expect(await prisma.offer.count({ where: { id: { in: offers.map((offer) => offer.id) }, status: 'REJECTED' } })).toBe(2);
+    expect(await prisma.notification.count({ where: { userId: { in: [sellerId, competingSellerId] }, type: 'request_cancelled', link: { startsWith: '/seller/offers/' } } })).toBeGreaterThanOrEqual(2);
+    expect((await prisma.marketplaceRequest.findUniqueOrThrow({ where: { id: cancellationRequestId } })).status).toBe('CANCELLED');
+  });
+
+  it('serializes cancellation against an offer acceptance', async () => {
+    const created = await agentA.post('/api/v1/client/requests').send({ partName: 'Concurrent cancel and accept', category: categoryA, quantity: 1, location: 'Tunis' }).expect(201);
+    const concurrentRequestId = created.body.data.id as string;
+    extraRequestIds.push(concurrentRequestId);
+    const offer = await prisma.offer.create({ data: { sellerId, requestId: concurrentRequestId, partName: 'Concurrent offer', condition: 'NEW', price: 34 } });
+    const [cancelResponse, acceptResponse] = await Promise.all([
+      agentA.post(`/api/v1/client/requests/${concurrentRequestId}/cancel`),
+      agentA.post(`/api/v1/client/offers/${offer.id}/accept`),
+    ]);
+    expect([cancelResponse.status, acceptResponse.status].filter((status) => status === 200 || status === 201)).toHaveLength(1);
+    expect([cancelResponse.status, acceptResponse.status].filter((status) => status === 409)).toHaveLength(1);
+    const finalRequest = await prisma.marketplaceRequest.findUniqueOrThrow({ where: { id: concurrentRequestId } });
+    const [orders, finalOffer] = await Promise.all([
+      prisma.order.findMany({ where: { requestId: concurrentRequestId } }),
+      prisma.offer.findUniqueOrThrow({ where: { id: offer.id } }),
+    ]);
+    if (finalRequest.status === 'CANCELLED') {
+      expect(orders).toHaveLength(0);
+      expect(finalOffer.status).toBe('REJECTED');
+    } else {
+      expect(finalRequest.status).toBe('OFFER_ACCEPTED');
+      expect(orders).toHaveLength(1);
+      expect(finalOffer.status).toBe('ACCEPTED');
+    }
   });
 
   it('accepts at most one competing offer and creates exactly one order', async () => {
@@ -131,6 +190,7 @@ integration('Client isolation and competing offer acceptance', () => {
     expect(Number(orders[0].totalAmount)).toBe(Number(acceptedOffer.price) * acceptedOffer.quantity + Number(acceptedOffer.deliveryFee));
     expect(acceptedOffers).toHaveLength(1);
     expect(marketplaceRequest.status).toBe('OFFER_ACCEPTED');
+    await agentA.post(`/api/v1/client/requests/${requestA}/cancel`).expect(409);
   });
 
   it('restores the authenticated Client session and revokes it on logout', async () => {

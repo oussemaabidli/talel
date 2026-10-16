@@ -13,7 +13,7 @@ import {
 
 export const HostOverview: React.FC = () => {
   const navigate = useNavigate();
-  const { clients, sellers, requests, orders, transactions, activityLogs } = useStore();
+  const { clients, sellers, requests, orders, transactionTotals, activityLogs } = useStore();
 
   const totalClients = clients.length;
   const totalSellers = sellers.filter((seller) => seller.isVerified).length;
@@ -22,7 +22,7 @@ export const HostOverview: React.FC = () => {
   const completedOrders = orders.filter(o => o.status === 'completed').length;
 
   // Platform GMV & Revenue
-  const totalPlatformGMV = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalPlatformGMV = Number(transactionTotals.grossOrderValueTnd);
 
   const revenueChartData = Array.from({ length: 6 }, (_, index) => {
     const date = new Date(); date.setMonth(date.getMonth() - 5 + index);
