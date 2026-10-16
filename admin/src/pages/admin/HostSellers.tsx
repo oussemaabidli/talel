@@ -4,11 +4,13 @@ import { SearchInput, Avatar, Rating, VerifiedBadge, ConfirmModal } from '../../
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { Store, Search, CheckCircle, ShieldCheck } from 'lucide-react';
 import { hostApi } from '../../api/host';
+import RegistrationDetailsModal from '../../components/RegistrationDetailsModal';
 
 export const HostSellers: React.FC = () => {
   const { sellers, toggleUserStatus, updateSeller, addToast } = useStore();
   const [search, setSearch] = useState('');
   const [toggleId, setToggleId] = useState<string | null>(null);
+  const [registrationId, setRegistrationId] = useState<string | null>(null);
 
   const filteredSellers = sellers.filter(s => {
     if (search) {
@@ -17,14 +19,6 @@ export const HostSellers: React.FC = () => {
     }
     return true;
   });
-
-  const toggleVerification = async (sellerId: string, currentVal: boolean) => {
-    try {
-      await hostApi(`/host/sellers/${encodeURIComponent(sellerId)}/verification`, { method: 'PATCH', body: JSON.stringify({ status: !currentVal ? 'verified' : 'pending_verification' }) });
-      useStore.setState((state) => ({ sellers: state.sellers.map((seller) => seller.id === sellerId ? { ...seller, isVerified: !currentVal } : seller) }));
-      addToast('success', `Seller verification ${!currentVal ? 'approved' : 'returned to pending'}`);
-    } catch (error) { addToast('error', error instanceof Error ? error.message : 'Unable to update verification.'); }
-  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -40,7 +34,7 @@ export const HostSellers: React.FC = () => {
           <SearchInput value={search} onChange={setSearch} placeholder="Search shop name, city..." />
         </div>
         <span className="text-xs text-text-secondary font-medium">
-          Verified Vendors: <strong className="text-navy-900 font-bold">{sellers.length}</strong>
+          Verified Vendors: <strong className="text-navy-900 font-bold">{sellers.filter((seller) => seller.isVerified).length}</strong>
         </span>
       </div>
 
@@ -81,16 +75,9 @@ export const HostSellers: React.FC = () => {
                   <td className="py-3.5 px-4 text-xs font-bold text-navy-900">{seller.totalSales}</td>
                   <td className="py-3.5 px-4 text-xs font-bold text-navy-900">{formatCurrency(seller.revenue)}</td>
                   <td className="py-3.5 px-4 text-xs">
-                    <button
-                      onClick={() => toggleVerification(seller.id, seller.isVerified)}
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                        seller.isVerified
-                          ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                      }`}
-                    >
-                      {seller.isVerified ? '✓ Verified' : '+ Verify'}
-                    </button>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${seller.isVerified ? 'bg-blue-100 text-blue-800' : 'bg-amber-50 text-amber-800'}`}>
+                      {seller.isVerified ? 'Verified' : 'Pending review'}
+                    </span>
                   </td>
                   <td className="py-3.5 px-4 text-xs">
                     <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${
@@ -100,6 +87,7 @@ export const HostSellers: React.FC = () => {
                     </span>
                   </td>
                   <td className="py-3.5 px-4 text-right">
+                    <button onClick={() => setRegistrationId(seller.id)} className="mr-2 text-xs font-semibold text-accent hover:underline">View registration</button>
                     <button
                       onClick={() => setToggleId(seller.id)}
                       className={`text-xs px-2.5 py-1 rounded-lg border font-semibold ${
@@ -132,6 +120,10 @@ export const HostSellers: React.FC = () => {
         message="Are you sure you want to alter this vendor's shop access?"
         confirmText="Confirm"
       />
+      {registrationId ? <RegistrationDetailsModal userId={registrationId} role="SELLER" onClose={() => setRegistrationId(null)} onSellerVerified={(userId) => {
+        useStore.setState((state) => ({ sellers: state.sellers.map((seller) => seller.id === userId ? { ...seller, isVerified: true } : seller) }));
+        addToast('success', 'Seller verified');
+      }} /> : null}
     </div>
   );
 };

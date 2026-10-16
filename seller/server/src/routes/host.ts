@@ -59,9 +59,30 @@ hostRouter.get('/users', async (req, res, next) => {
     const search = z.string().trim().max(100).optional().parse(req.query.search);
     const page = z.coerce.number().int().min(1).default(1).parse(req.query.page);
     const limit = z.coerce.number().int().min(1).max(100).default(50).parse(req.query.limit);
-    const where: Prisma.UserWhereInput = { role: role ?? { in: ['CLIENT', 'SELLER'] }, ...(search ? { OR: [{ email: { contains: search, mode: 'insensitive' } }, { profile: { is: { OR: [{ name: { contains: search, mode: 'insensitive' } }, { shopName: { contains: search, mode: 'insensitive' } }] } } }] } : {}) };
-    const [data, total] = await Promise.all([prisma.user.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, select: { id: true, email: true, phone: true, role: true, isActive: true, createdAt: true, profile: true, _count: { select: { orders: true, offers: true } } } }), prisma.user.count({ where })]);
+    const where: Prisma.UserWhereInput = {
+      role: role ?? { in: ['CLIENT', 'SELLER'] },
+      ...(search ? { OR: [
+        { email: { contains: search, mode: 'insensitive' } },
+        { profile: { is: { OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { shopName: { contains: search, mode: 'insensitive' } },
+        ] } } },
+        { clientProfile: { is: { name: { contains: search, mode: 'insensitive' } } } },
+      ] } : {}),
+    };
+    const [data, total] = await Promise.all([prisma.user.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, select: { id: true, email: true, phone: true, role: true, isActive: true, createdAt: true, profile: true, clientProfile: true, _count: { select: { orders: true, offers: true } } } }), prisma.user.count({ where })]);
     res.json({ data, pagination: { page, limit, total } });
+  } catch (error) { next(error); }
+});
+
+hostRouter.get('/users/:id/registration', async (req, res, next) => {
+  try {
+    const user = await prisma.user.findFirst({
+      where: { id: req.params.id, role: { in: ['CLIENT', 'SELLER'] } },
+      select: { id: true, email: true, phone: true, role: true, isActive: true, createdAt: true, clientProfile: true, profile: true },
+    });
+    if (!user) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Client or seller account not found.' } });
+    res.set('Cache-Control', 'private, no-store').json({ data: user });
   } catch (error) { next(error); }
 });
 

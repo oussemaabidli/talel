@@ -88,7 +88,7 @@ export const HostOverview: React.FC = () => {
         <div className="stat-card !p-4">
           <span className="text-[10px] font-bold text-text-secondary uppercase">Verified Sellers</span>
           <p className="text-xl font-extrabold text-navy-900 mt-2">{totalSellers}</p>
-          <span className="text-[10px] text-green-700 font-semibold">44 stores</span>
+          <span className="text-[10px] text-green-700 font-semibold">Approved seller accounts</span>
         </div>
 
         <div className="stat-card !p-4">

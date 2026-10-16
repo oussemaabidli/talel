@@ -18,6 +18,7 @@ describe('Talel Seller API', () => {
     expect(response.body.openapi).toBe('3.1.0');
     expect(response.body.paths['/seller/inventory/{id}/stock']).toBeDefined();
     expect(response.body.paths['/host/sellers/{id}/verification']).toBeDefined();
+    expect(response.body.paths['/host/users/{id}/registration'].get.security[0].hostSession).toBeDefined();
     expect(response.body.paths['/client/requests'].post.security[0].clientSession).toBeDefined();
     expect(response.body.paths['/client/auth/register'].post.security).toEqual([]);
     expect(response.body.paths['/auth/register'].post.security).toEqual([]);
@@ -40,6 +41,7 @@ describe('Talel Seller API', () => {
     const response = await request(app).get('/api/v1/host/users');
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
+    await request(app).get('/api/v1/host/users/example-client/registration').expect(401);
   });
 
   it('rejects unauthenticated access to Client business data', async () => {

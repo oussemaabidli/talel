@@ -56,7 +56,7 @@ api.get('/openapi.json', (_req, res) => res.json({
     ['/seller/conversations/{id}/messages', ['get', 'post']], ['/seller/notifications', ['get']],
     ['/seller/notifications/read-all', ['patch']], ['/seller/notifications/{id}/read', ['patch']],
     ['/host/auth/login', ['post']], ['/host/auth/me', ['get']], ['/host/dashboard', ['get']],
-    ['/host/users', ['get']], ['/host/users/{id}/status', ['patch']], ['/host/sellers', ['get']],
+    ['/host/users', ['get']], ['/host/users/{id}/registration', ['get']], ['/host/users/{id}/status', ['patch']], ['/host/sellers', ['get']],
     ['/seller/documents', ['get']], ['/seller/documents/{kind}', ['put', 'delete']],
     ['/host/sellers/{id}/verification', ['patch']], ['/host/sellers/{id}/documents', ['get']],
     ['/host/sellers/{sellerId}/documents/{documentId}/file', ['get']], ['/host/sellers/{sellerId}/documents/{documentId}/review', ['patch']],

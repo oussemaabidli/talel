@@ -28,8 +28,8 @@ integration('seller database authorization and business rules', () => {
     const a = await prisma.user.create({ data: { email: email('seller-a'), passwordHash, profile: { create: { name: 'Seller A', shopName: 'Seller A Test Shop', verificationStatus: 'verified' } } } });
     const b = await prisma.user.create({ data: { email: email('seller-b'), passwordHash, profile: { create: { name: 'Seller B', shopName: 'Seller B Test Shop', verificationStatus: 'verified' } } } });
     const host = await prisma.user.create({ data: { email: email('host'), passwordHash, role: 'HOST' } });
-    const pending = await prisma.user.create({ data: { email: email('seller-pending'), passwordHash, profile: { create: { name: 'Pending Seller', shopName: 'Pending Seller Test Shop', verificationStatus: 'pending_verification' } } } });
-    const client = await prisma.user.create({ data: { email: email('client'), passwordHash, role: 'CLIENT', clientProfile: { create: { name: 'Messaging Test Client' } } } });
+    const pending = await prisma.user.create({ data: { email: email('seller-pending'), passwordHash, profile: { create: { name: 'Pending Seller', shopName: 'Pending Seller Test Shop', legalName: 'Pending Seller Legal Name', legalForm: 'SARL', address: '12 Test Street', city: 'Tunis', categories: ['Mechanical'], verificationStatus: 'pending_verification' } } } });
+    const client = await prisma.user.create({ data: { email: email('client'), passwordHash, role: 'CLIENT', clientProfile: { create: { name: 'Messaging Test Client', phone: '+21622123456', address: '8 Test Avenue', city: 'Sfax', vehicles: [{ brand: 'Test Motors', model: 'Fixture', year: 2020 }] } } } });
     sellerA = a.id; sellerB = b.id; hostId = host.id; pendingSellerId = pending.id; testClientId = client.id;
     agentA = request.agent(app); agentB = request.agent(app); hostAgent = request.agent(app); pendingAgent = request.agent(app);
     await agentA.post('/api/v1/auth/login').send({ email: a.email, password: 'integration-test-password' }).expect(200);
@@ -82,6 +82,21 @@ integration('seller database authorization and business rules', () => {
     await hostAgent.patch(`/api/v1/host/users/${sellerA}/status`).send({ isActive: false }).expect(200);
     await agentA.get('/api/v1/seller/profile').expect(401);
     expect(await prisma.hostAuditLog.count({ where: { actorId: hostId, entityId: sellerA, action: 'USER_SUSPENDED' } })).toBe(1);
+  });
+
+  it('returns Client and Seller registration details only to Host sessions', async () => {
+    await agentA.get(`/api/v1/host/users/${testClientId}/registration`).expect(401);
+    const client = await hostAgent.get(`/api/v1/host/users/${testClientId}/registration`).expect(200);
+    expect(client.body.data).toMatchObject({
+      role: 'CLIENT',
+      clientProfile: { name: 'Messaging Test Client', address: '8 Test Avenue', city: 'Sfax' },
+    });
+    expect(client.body.data.clientProfile.vehicles).toEqual([{ brand: 'Test Motors', model: 'Fixture', year: 2020 }]);
+    const seller = await hostAgent.get(`/api/v1/host/users/${pendingSellerId}/registration`).expect(200);
+    expect(seller.body.data).toMatchObject({
+      role: 'SELLER',
+      profile: { legalName: 'Pending Seller Legal Name', legalForm: 'SARL', address: '12 Test Street', city: 'Tunis' },
+    });
   });
 
   it('enforces the direct-contact setting on Seller message submissions', async () => {

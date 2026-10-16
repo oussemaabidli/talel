@@ -4,11 +4,13 @@ import { SearchInput, Avatar, ConfirmModal } from '../../components/ui';
 import { formatDate } from '../../utils/helpers';
 import { UserCheck, Search, CheckCircle, Car } from 'lucide-react';
 import { hostApi } from '../../api/host';
+import RegistrationDetailsModal from '../../components/RegistrationDetailsModal';
 
 export const HostClients: React.FC = () => {
   const { clients, toggleUserStatus, addToast } = useStore();
   const [search, setSearch] = useState('');
   const [toggleId, setToggleId] = useState<string | null>(null);
+  const [registrationId, setRegistrationId] = useState<string | null>(null);
 
   const filteredClients = clients.filter(c => {
     if (search) {
@@ -78,6 +80,7 @@ export const HostClients: React.FC = () => {
                     </span>
                   </td>
                   <td className="py-3.5 px-4 text-right">
+                    <button onClick={() => setRegistrationId(client.id)} className="mr-2 text-xs font-semibold text-accent hover:underline">View registration</button>
                     <button
                       onClick={() => setToggleId(client.id)}
                       className={`text-xs px-2.5 py-1 rounded-lg border font-semibold ${
@@ -110,6 +113,7 @@ export const HostClients: React.FC = () => {
         message="Are you sure you want to alter this client's marketplace access?"
         confirmText="Confirm"
       />
+      {registrationId ? <RegistrationDetailsModal userId={registrationId} role="CLIENT" onClose={() => setRegistrationId(null)} onSellerVerified={() => undefined} /> : null}
     </div>
   );
 };
