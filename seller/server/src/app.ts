@@ -43,7 +43,7 @@ api.get('/openapi.json', (_req, res) => res.json({
   paths: Object.fromEntries([
     ['/auth/register', ['post']], ['/auth/login', ['post']], ['/auth/logout', ['post']], ['/auth/me', ['get']],
     ['/client/auth/register', ['post']], ['/client/auth/login', ['post']], ['/client/auth/logout', ['post']], ['/client/auth/me', ['get']],
-    ['/client/profile', ['patch']], ['/client/requests', ['get', 'post']], ['/client/requests/{requestId}', ['get', 'patch']], ['/client/requests/{requestId}/cancel', ['post']],
+    ['/client/profile', ['patch']], ['/client/categories', ['get']], ['/client/requests', ['get', 'post']], ['/client/requests/{requestId}', ['get', 'patch']], ['/client/requests/{requestId}/cancel', ['post']],
     ['/client/offers', ['get']], ['/client/offers/{offerId}/accept', ['post']], ['/client/offers/{offerId}/reject', ['post']], ['/client/offers/{offerId}/conversation', ['post']],
     ['/client/orders', ['get']], ['/client/orders/{orderId}', ['get']], ['/client/orders/{orderId}/cancel', ['post']], ['/client/conversations', ['get']], ['/client/conversations/{conversationId}/messages', ['get', 'post']],
     ['/client/notifications', ['get']], ['/client/notifications/read-all', ['patch']], ['/client/notifications/{notificationId}/read', ['patch']],
@@ -211,6 +211,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   if (error instanceof ZodError) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Request validation failed.', details: error.issues.map((issue) => ({ path: issue.path, message: issue.message })) } });
   if (error instanceof Error && (error as Error & { type?: string }).type === 'entity.too.large') return res.status(413).json({ error: { code: 'DOCUMENT_TOO_LARGE', message: 'Each document must be 10 MB or smaller.' } });
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return res.status(409).json({ error: { code: 'CONFLICT', message: 'A record with those details already exists.' } });
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') return res.status(409).json({ error: { code: 'CONCURRENT_MODIFICATION', message: 'Another operation changed this record. Refresh and try again.' } });
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Record not found.' } });
   if (error instanceof Error && error.message === 'INVALID_ORDER_TRANSITION') return res.status(409).json({ error: { code: 'INVALID_TRANSITION', message: 'This order status transition is not allowed.' } });
   if (error instanceof Error && error.message === 'DUPLICATE_ACTIVE_OFFER') return res.status(409).json({ error: { code: 'DUPLICATE_OFFER', message: 'You already have an active offer for this request.' } });

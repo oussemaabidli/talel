@@ -13,7 +13,7 @@ import {
 export const ClientOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { orders, conversations, currentClient, addToast } = useStore();
+  const { orders, conversations, currentClient, updateOrder, addMessage, addToast } = useStore();
 
   const [messageInput, setMessageInput] = useState('');
 
@@ -40,12 +40,16 @@ export const ClientOrderDetail: React.FC = () => {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageInput.trim() || !conversation) return;
-    try { await clientApiRoutes.sendMessage(conversation.id, messageInput.trim()); setMessageInput(''); addToast('success', 'Message sent to seller.'); window.location.reload(); }
+    try {
+      const saved = await clientApiRoutes.sendMessage(conversation.id, messageInput.trim());
+      addMessage(conversation.id, { id: saved.id, contextType: 'order', contextId: order.id, contextLabel: `Order #${order.id}`, senderId: currentClient.id, senderName: currentClient.name, senderRole: 'client', senderAvatar: '', content: saved.body, timestamp: saved.createdAt, isRead: true });
+      setMessageInput(''); addToast('success', 'Message sent to seller.');
+    }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Message could not be sent.'); }
   };
 
   const handleCancelOrder = async () => {
-    try { await clientApiRoutes.cancelOrder(order.id); addToast('success', 'Order cancelled.'); window.location.reload(); }
+    try { const updated = await clientApiRoutes.cancelOrder(order.id); updateOrder(order.id, { status: String(updated.status).toLowerCase() as any, updatedAt: updated.updatedAt }); addToast('success', 'Order cancelled.'); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Order could not be cancelled.'); }
   };
 

@@ -36,12 +36,12 @@ export const ClientOfferDetail: React.FC = () => {
   }
 
   const handleConfirmAccept = async () => {
-    try { await clientApiRoutes.acceptOffer(offer.id); addToast('success', 'Offer accepted. The order is ready to track.'); window.location.assign('/client/orders'); }
+    try { const createdOrder = await clientApiRoutes.acceptOffer(offer.id); addToast('success', `Offer accepted. Order ${createdOrder.id} is ready to track.`); window.location.assign('/client/orders'); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Could not accept this offer.'); setIsAcceptModalOpen(false); }
   };
 
   const handleConfirmReject = async () => {
-    try { await clientApiRoutes.rejectOffer(offer.id); addToast('info', 'Offer rejected.'); window.location.reload(); }
+    try { const rejected = await clientApiRoutes.rejectOffer(offer.id); useStore.getState().updateOfferStatus(rejected.id, String(rejected.status).toLowerCase() as any); addToast('info', 'Offer rejected.'); setIsRejectModalOpen(false); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Could not reject this offer.'); setIsRejectModalOpen(false); }
   };
 
@@ -220,9 +220,7 @@ export const ClientOfferDetail: React.FC = () => {
             {/* Protection Notice */}
             <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-[11px] text-blue-900 flex items-start gap-2">
               <ShieldCheck size={16} className="text-accent shrink-0 mt-0.5" />
-              <span>
-                Funds and order fulfillment are tracked through the AutoParts Pro platform warranty system.
-              </span>
+                <span>Order tracking is available here. Payment processing and payment protection are not enabled.</span>
             </div>
           </div>
         </div>

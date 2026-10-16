@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 export const ClientMessages: React.FC = () => {
-  const { currentClient, conversations, markConversationRead, addToast } = useStore();
+  const { currentClient, conversations, addMessage, markConversationRead, addToast } = useStore();
 
   const clientConversations = conversations.filter((c) =>
     c.participants.some((p) => p.id === currentClient.id)
@@ -30,7 +30,11 @@ export const ClientMessages: React.FC = () => {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !activeConversation) return;
-    try { await clientApiRoutes.sendMessage(activeConversation.id, inputText.trim()); setInputText(''); addToast('success', 'Message sent.'); window.location.reload(); }
+    try {
+      const saved = await clientApiRoutes.sendMessage(activeConversation.id, inputText.trim());
+      addMessage(activeConversation.id, { id: saved.id, contextType: activeConversation.contextType, contextId: activeConversation.contextId, contextLabel: activeConversation.contextLabel, senderId: saved.senderId, senderName: currentClient.name, senderRole: 'client', senderAvatar: '', content: saved.body, timestamp: saved.createdAt, isRead: true });
+      setInputText(''); addToast('success', 'Message sent.');
+    }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Message could not be sent.'); }
   };
 
@@ -40,7 +44,7 @@ export const ClientMessages: React.FC = () => {
       <div>
         <h1 className="text-2xl font-extrabold text-navy-900">Contextual Communications</h1>
         <p className="text-sm text-text-secondary">
-          All messaging is tied to specific requests or orders to safeguard warranties and transaction records.
+          Messages are saved with their related request or order.
         </p>
       </div>
 
@@ -48,7 +52,7 @@ export const ClientMessages: React.FC = () => {
       <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center gap-3 text-xs text-blue-900">
         <Lock size={16} className="text-accent shrink-0" />
         <span>
-          <strong className="font-bold">Transaction Safety:</strong> Unrestricted private contacts (phone numbers, WhatsApp) are restricted on platform to ensure full buyer protection.
+          Messages are visible to the participants in the related conversation.
         </span>
       </div>
 

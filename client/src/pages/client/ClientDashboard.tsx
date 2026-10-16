@@ -111,9 +111,6 @@ export const ClientDashboard: React.FC = () => {
           </div>
           <div className="mt-4 flex items-baseline justify-between">
             <span className="text-3xl font-extrabold text-navy-900">{activeRequestsCount}</span>
-            <span className="text-xs font-semibold text-primary flex items-center gap-0.5">
-              ↑ 1 from last week
-            </span>
           </div>
         </div>
 
@@ -129,9 +126,6 @@ export const ClientDashboard: React.FC = () => {
           </div>
           <div className="mt-4 flex items-baseline justify-between">
             <span className="text-3xl font-extrabold text-navy-900">{offersReceivedCount}</span>
-            <span className="text-xs font-semibold text-primary flex items-center gap-0.5">
-              ↑ 4 from last week
-            </span>
           </div>
         </div>
 
@@ -147,9 +141,6 @@ export const ClientDashboard: React.FC = () => {
           </div>
           <div className="mt-4 flex items-baseline justify-between">
             <span className="text-3xl font-extrabold text-navy-900">{ordersInProgressCount}</span>
-            <span className="text-xs font-semibold text-text-secondary">
-              → 0 from last week
-            </span>
           </div>
         </div>
 
@@ -165,9 +156,6 @@ export const ClientDashboard: React.FC = () => {
           </div>
           <div className="mt-4 flex items-baseline justify-between">
             <span className="text-3xl font-extrabold text-navy-900">{completedOrdersCount}</span>
-            <span className="text-xs font-semibold text-primary flex items-center gap-0.5">
-              ↑ 3 from last week
-            </span>
           </div>
         </div>
       </div>

@@ -12,7 +12,7 @@ import {
 
 export const ClientRequests: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, requests, addToast } = useStore();
+  const { currentClient, requests, updateRequestStatus, addToast } = useStore();
 
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('all');
@@ -51,7 +51,7 @@ export const ClientRequests: React.FC = () => {
     });
 
   const handleCancelRequest = async (id: string) => {
-    try { await clientApiRoutes.cancelRequest(id); addToast('info', `Request #${id} has been cancelled`); window.location.reload(); }
+    try { const updated = await clientApiRoutes.cancelRequest(id); updateRequestStatus(updated.id, String(updated.status).toLowerCase() as any); addToast('info', `Request #${id} has been cancelled`); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be cancelled.'); }
   };
 

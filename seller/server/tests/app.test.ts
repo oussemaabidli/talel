@@ -54,6 +54,17 @@ describe('Talel Seller API', () => {
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
   });
 
+  it('rate limits repeated Client registration attempts', async () => {
+    // The preceding validation test uses the first attempt in this process-local limiter window.
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      const response = await request(app).post('/api/v1/client/auth/register').send({ email: 'bad', password: 'short' });
+      expect(response.status).toBe(400);
+    }
+    const response = await request(app).post('/api/v1/client/auth/register').send({ email: 'bad', password: 'short' });
+    expect(response.status).toBe(429);
+    expect(response.body.error.code).toBe('RATE_LIMITED');
+  });
+
   it('allows credentialed CORS preflight for private document PUT uploads', async () => {
     const response = await request(app).options('/api/v1/seller/documents/rneDoc')
       .set('Origin', 'http://localhost:3002')

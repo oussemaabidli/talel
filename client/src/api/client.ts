@@ -38,6 +38,7 @@ export const clientApiRoutes = {
   order: (id: string) => clientApi<any>(`/client/orders/${encodeURIComponent(id)}`),
   cancelOrder: (id: string) => clientApi<any>(`/client/orders/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   profile: (input: unknown) => clientApi<any>('/client/profile', { method: 'PATCH', body: JSON.stringify(input) }),
+  categories: () => clientApi<Array<{id: string; name: string; description: string; icon: string}>>('/client/categories'),
   conversations: () => clientApi<any[]>('/client/conversations'),
   messages: (id: string) => clientApi<any[]>(`/client/conversations/${encodeURIComponent(id)}/messages`),
   sendMessage: (id: string, body: string) => clientApi<any>(`/client/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),

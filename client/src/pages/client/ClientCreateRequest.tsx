@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { clientApiRoutes } from '../../api/client';
-import {
-  vehicleBrands, vehicleModels, mockCategories
-} from '../../data/mockData';
+import { vehicleBrands, vehicleModels } from '../../data/mockData';
 import type { Vehicle, PartCondition, DeliveryMethod } from '../../types';
 import {
   Car, Wrench, FileText, DollarSign, CheckCircle2,
@@ -13,7 +11,7 @@ import {
 
 export const ClientCreateRequest: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, addToast } = useStore();
+  const { currentClient, addRequest, addToast } = useStore();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -29,7 +27,8 @@ export const ClientCreateRequest: React.FC = () => {
   const [isUsingCustomVehicle, setIsUsingCustomVehicle] = useState(false);
 
   // Step 2: Part
-  const [category, setCategory] = useState<string>('Brake System');
+  const [category, setCategory] = useState<string>('');
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [partName, setPartName] = useState<string>('');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
@@ -45,6 +44,8 @@ export const ClientCreateRequest: React.FC = () => {
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery');
   const [location, setLocation] = useState<string>(currentClient.city || 'Algiers');
 
+  useEffect(() => { clientApiRoutes.categories().then(setCategories).catch((e) => addToast('error', e instanceof Error ? e.message : 'Could not load categories.')); }, [addToast]);
+
   // Available models based on selected brand
   const activeBrand = isUsingCustomVehicle ? customVehicle.brand : selectedVehicle?.brand || 'Toyota';
   const modelsForBrand = vehicleModels[activeBrand] || ['Standard'];
@@ -58,7 +59,8 @@ export const ClientCreateRequest: React.FC = () => {
     }
 
     try {
-      await clientApiRoutes.createRequest({ partName: partName.trim(), category, oemReference: referenceNumber.trim() || undefined, vehicleMake: finalVehicle.brand, vehicleModel: finalVehicle.model, vehicleYear: finalVehicle.year, condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod, location: location.trim() || currentClient.city || undefined });
+      const saved = await clientApiRoutes.createRequest({ partName: partName.trim(), category, oemReference: referenceNumber.trim() || undefined, vehicleMake: finalVehicle.brand, vehicleModel: finalVehicle.model, vehicleYear: finalVehicle.year, condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod, location: location.trim() || currentClient.city || undefined });
+      addRequest({ id: saved.id, clientId: currentClient.id, clientName: currentClient.name, vehicle: finalVehicle, category: saved.category, partName: saved.partName, referenceNumber: saved.oemReference, quantity: saved.quantity, condition: String(saved.condition).toLowerCase() as PartCondition, description: saved.description, images: [], minBudget: Number(saved.minBudget ?? 0), maxBudget: Number(saved.maxBudget ?? 0), deliveryMethod: (saved.deliveryMethod ?? deliveryMethod) as DeliveryMethod, location: saved.location ?? '', status: String(saved.status).toLowerCase() as any, offersCount: saved._count?.offers ?? 0, createdAt: saved.createdAt, updatedAt: saved.updatedAt });
       addToast('success', 'Request published successfully.'); navigate('/client/requests');
     } catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be published.'); }
   };
@@ -241,15 +243,15 @@ export const ClientCreateRequest: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Category *</label>
-                <select
+                <input
+                  list="client-categories"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="select-field"
-                >
-                  {mockCategories.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
+                  className="input-field"
+                  placeholder="Choose or enter a category"
+                  required
+                />
+                <datalist id="client-categories">{categories.map((c) => <option key={c.id} value={c.name} />)}</datalist>
               </div>
 
               <div>

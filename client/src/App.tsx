@@ -29,11 +29,13 @@ const PageLoader = () => (
 );
 
 const App: React.FC = () => {
-  const { isAuthenticated, login, logout, updateClient, hydrateClientData } = useStore();
+  const { isAuthenticated, login, logout, updateClient, hydrateClientData, addToast } = useStore();
   const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
     clientAuth.me().then(async ({ id, email, clientProfile }: any) => {
       updateClient({ id, email, name: clientProfile?.name ?? '', phone: clientProfile?.phone ?? '', city: clientProfile?.city ?? '', address: clientProfile?.address ?? '', savedVehicles: clientProfile?.vehicles ?? [] });
+      login('client');
+      try {
       const [rawRequests, rawOffers, rawOrders, rawNotifications, rawConversations] = await Promise.all([clientApiRoutes.requests(), clientApiRoutes.offers(), clientApiRoutes.orders(), clientApiRoutes.notifications(), clientApiRoutes.conversations()]);
       const requests = rawRequests.map((r: any) => ({ ...r, clientName: clientProfile?.name ?? '', vehicle: { id: r.id, brand: r.vehicleMake ?? '', model: r.vehicleModel ?? '', year: r.vehicleYear ?? 0, engine: '' }, referenceNumber: r.oemReference, status: String(r.status).toLowerCase(), minBudget: Number(r.minBudget ?? 0), maxBudget: Number(r.maxBudget ?? 0), offersCount: r._count?.offers ?? 0, images: [] }));
       const offerMap = (o: any) => ({ ...o, sellerName: o.seller?.profile?.shopName ?? '', sellerShop: o.seller?.profile?.shopName ?? 'Seller', sellerRating: 0, sellerReviews: 0, sellerVerified: o.seller?.profile?.verificationStatus === 'verified', sellerAvatar: '', partBrand: o.brand ?? '', referenceNumber: o.referenceNumber ?? '', condition: String(o.condition).toLowerCase(), price: Number(o.price), deliveryCost: Number(o.deliveryFee ?? 0), deliveryTime: o.estimatedDelivery ?? '', availability: 'Available', deliveryMethod: 'delivery', images: [], expiresAt: '', status: String(o.status).toLowerCase(), request: o.request });
@@ -48,9 +50,13 @@ const App: React.FC = () => {
         return { id: c.id, contextType, contextId: c.orderId ?? c.requestId ?? c.id, contextLabel: c.request?.partName ?? `Order ${c.orderId ?? ''}`, participants, messages, lastMessage: messages.at(-1)?.content ?? '', lastMessageTime: messages.at(-1)?.timestamp ?? c.createdAt, unreadCount: 0 };
       }));
       hydrateClientData({ requests, offers, orders, clientNotifications, conversations });
-      login('client');
+      } catch (error) {
+        hydrateClientData({ requests: [], offers: [], orders: [], clientNotifications: [], conversations: [] });
+        if ((error as { status?: number })?.status === 401) logout();
+        else addToast('error', error instanceof Error ? error.message : 'Could not load your account data. Please retry.');
+      }
     }).catch(() => logout()).finally(() => setSessionChecked(true));
-  }, [login, logout, updateClient, hydrateClientData]);
+  }, [login, logout, updateClient, hydrateClientData, addToast]);
 
   return (
     <BrowserRouter>

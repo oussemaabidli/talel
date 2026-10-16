@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes, createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { rateLimit } from 'express-rate-limit';
 import { Prisma, PartCondition, RequestStatus } from '@prisma/client';
 import { prisma } from '../db.js';
 import { env } from '../config/env.js';
 import { requireClient } from '../middleware/auth.js';
 
 export const clientRouter = Router();
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again later.' } } });
 const email = z.string().trim().email().max(254).transform(v => v.toLowerCase());
 const clientSignup = z.object({ email, password: z.string().min(10).max(128), name: z.string().trim().min(1).max(100), phone: z.string().trim().max(32).optional(), address: z.string().trim().max(300).optional(), city: z.string().trim().max(100).optional() });
 const login = z.object({ email, password: z.string().min(1).max(128) });
@@ -15,7 +17,7 @@ const cookie = { httpOnly: true, signed: true, sameSite: 'strict' as const, secu
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
 const publicUser = { id: true, email: true, role: true, isActive: true, clientProfile: { select: { name: true, phone: true, address: true, city: true, vehicles: true } } } as const;
 
-clientRouter.post('/auth/register', async (req, res, next) => {
+clientRouter.post('/auth/register', authLimiter, async (req, res, next) => {
   try {
     const input = clientSignup.parse(req.body);
     const passwordHash = await bcrypt.hash(input.password, 12);
@@ -25,7 +27,7 @@ clientRouter.post('/auth/register', async (req, res, next) => {
     res.cookie('talel_session', raw, cookie).status(201).json({ data: { user: { ...user, role: 'CLIENT' } } });
   } catch (e) { next(e); }
 });
-clientRouter.post('/auth/login', async (req, res, next) => {
+clientRouter.post('/auth/login', authLimiter, async (req, res, next) => {
   try {
     const input = login.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true, email: true, passwordHash: true, role: true, isActive: true, clientProfile: { select: { name: true } } } });
@@ -44,6 +46,7 @@ clientRouter.get('/auth/me', async (req, res, next) => { try { res.set('Cache-Co
 
 const profileInput = z.object({ name: z.string().trim().min(1).max(100), phone: z.string().trim().max(32).optional().nullable(), address: z.string().trim().max(300).optional().nullable(), city: z.string().trim().max(100).optional().nullable(), vehicles: z.array(z.object({ id: z.string().max(80).optional(), brand: z.string().trim().min(1).max(80), model: z.string().trim().min(1).max(80), year: z.number().int().min(1900).max(2100), engine: z.string().max(80).optional() })).max(30).optional() });
 clientRouter.patch('/profile', async (req, res, next) => { try { const p = profileInput.parse(req.body); const data = await prisma.clientProfile.upsert({ where: { userId: id(req) }, create: { userId: id(req), ...p, vehicles: p.vehicles ?? [] }, update: { ...p, vehicles: p.vehicles ?? [] } }); res.json({ data }); } catch (e) { next(e); } });
+clientRouter.get('/categories', async (_req, res, next) => { try { res.json({ data: await prisma.marketplaceCategory.findMany({ where: { isActive: true }, select: { id: true, name: true, description: true, icon: true }, orderBy: { name: 'asc' } }) }); } catch (e) { next(e); } });
 
 const requestInput = z.object({ partName: z.string().trim().min(1).max(160), category: z.string().trim().min(1).max(80), oemReference: z.string().trim().max(100).optional(), brand: z.string().trim().max(100).optional(), vehicleMake: z.string().trim().max(80).optional(), vehicleModel: z.string().trim().max(80).optional(), vehicleYear: z.number().int().min(1900).max(2100).optional(), condition: z.nativeEnum(PartCondition).default(PartCondition.EITHER), quantity: z.number().int().min(1).max(10000).default(1), minBudget: z.number().finite().nonnegative().max(999999999).optional(), maxBudget: z.number().finite().nonnegative().max(999999999).optional(), location: z.string().trim().max(150).optional(), deliveryMethod: z.enum(['delivery','pickup','both']).optional(), description: z.string().max(4000).optional() }).refine(v => v.minBudget === undefined || v.maxBudget === undefined || v.minBudget <= v.maxBudget, { message: 'Minimum budget must not exceed maximum budget.' });
 const requestFields = { id: true, clientId: true, partName: true, category: true, oemReference: true, brand: true, vehicleMake: true, vehicleModel: true, vehicleYear: true, condition: true, quantity: true, minBudget: true, maxBudget: true, location: true, deliveryMethod: true, description: true, status: true, createdAt: true, updatedAt: true, _count: { select: { offers: true } } } as const;

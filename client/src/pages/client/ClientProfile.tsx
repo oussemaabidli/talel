@@ -29,7 +29,7 @@ export const ClientProfile: React.FC = () => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    try { await clientApiRoutes.profile({ name, phone, city, address, vehicles: currentClient.savedVehicles }); updateClient({ name, phone, city, address }); addToast('success', 'Profile updated successfully'); }
+    try { const saved = await clientApiRoutes.profile({ name, phone, city, address, vehicles: currentClient.savedVehicles }); updateClient({ name: saved.name, phone: saved.phone ?? '', city: saved.city ?? '', address: saved.address ?? '' }); addToast('success', 'Profile updated successfully'); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Profile could not be saved.'); }
   };
 
@@ -43,7 +43,7 @@ export const ClientProfile: React.FC = () => {
     };
 
     const savedVehicles = [...currentClient.savedVehicles, newVehicle];
-    try { await clientApiRoutes.profile({ name: currentClient.name, phone: currentClient.phone, city: currentClient.city, address: currentClient.address, vehicles: savedVehicles }); updateClient({ savedVehicles }); }
+    try { const saved = await clientApiRoutes.profile({ name: currentClient.name, phone: currentClient.phone, city: currentClient.city, address: currentClient.address, vehicles: savedVehicles }); updateClient({ savedVehicles: saved.vehicles }); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Vehicle could not be saved.'); return; }
 
     setIsAddVehicleOpen(false);
@@ -52,7 +52,7 @@ export const ClientProfile: React.FC = () => {
 
   const handleDeleteVehicle = async (vehicleId: string) => {
     const savedVehicles = currentClient.savedVehicles.filter(v => v.id !== vehicleId);
-    try { await clientApiRoutes.profile({ name: currentClient.name, phone: currentClient.phone, city: currentClient.city, address: currentClient.address, vehicles: savedVehicles }); updateClient({ savedVehicles }); addToast('info', 'Vehicle removed from garage'); }
+    try { const saved = await clientApiRoutes.profile({ name: currentClient.name, phone: currentClient.phone, city: currentClient.city, address: currentClient.address, vehicles: savedVehicles }); updateClient({ savedVehicles: saved.vehicles }); addToast('info', 'Vehicle removed from garage'); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Vehicle could not be removed.'); }
   };
 
