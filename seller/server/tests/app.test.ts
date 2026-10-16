@@ -89,6 +89,16 @@ describe('Talel Seller API', () => {
     expect(response.headers['access-control-allow-methods']).toContain('PUT');
   });
 
+  it('allows credentialed CORS preflight from the Admin IPv4 loopback origin in development', async () => {
+    const response = await request(app).options('/api/v1/host/auth/login')
+      .set('Origin', 'http://127.0.0.1:3003')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type');
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('http://127.0.0.1:3003');
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
+
   it('requires a Seller session before accepting private document bytes', async () => {
     const response = await request(app).put('/api/v1/seller/documents/rneDoc')
       .set('Content-Type', 'application/pdf').send(Buffer.from('%PDF-1.7'));

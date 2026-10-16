@@ -169,7 +169,7 @@ const RegisterPage: React.FC = () => {
               </section>}
               {step === 3 && <section className="space-y-5">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><h2 className="font-semibold text-slate-900">Documents de l’entreprise</h2><p className="mt-1 text-sm leading-6 text-slate-600">Les fichiers seront transmis au serveur privé après la création du compte. Formats acceptés : PDF, JPG, PNG et WebP ; 10 Mo maximum par fichier.</p></div>
-                {[['rneDoc','Extrait RNE (si applicable)'],['taxDoc','Document d’identification fiscale (si applicable)'],['addressDoc','Justificatif d’adresse professionnelle'],['authorizationDoc','Justificatif de représentation (si requis)']].map(([id, title]) => <div key={id}>
+                {[['rneDoc','Extrait RNE (si applicable)'],['taxDoc','Document d’identification fiscale (si applicable)'],['addressDoc','Justificatif d’adresse professionnelle (requis pour la validation)'],['authorizationDoc','Justificatif de représentation (si requis)']].map(([id, title]) => <div key={id}>
                   <label htmlFor={id} className={labelClass}>{title}</label>
                   <label htmlFor={id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600 hover:border-emerald-500">
                     <FileUp className="shrink-0 text-emerald-600" size={20} />

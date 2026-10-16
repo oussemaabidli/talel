@@ -19,7 +19,11 @@ import { deletePrivateDocument, documentKinds, identifyDocument, maxDocumentByte
 export const app = express();
 app.disable('x-powered-by');
 app.use(helmet());
-app.use(cors({ origin(origin, callback) { if (!origin || allowedOrigins.includes(origin)) callback(null, true); else callback(new Error('Origin not allowed')); }, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
+app.use(cors({ origin(origin, callback) {
+  const isLocalAdminOrigin = env.NODE_ENV !== 'production' && origin === 'http://127.0.0.1:3003';
+  if (!origin || allowedOrigins.includes(origin) || isLocalAdminOrigin) callback(null, true);
+  else callback(new Error('Origin not allowed'));
+}, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser(env.COOKIE_SECRET));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

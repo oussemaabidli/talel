@@ -7,6 +7,7 @@ import { clientApiRoutes, clientAuth } from './api/client';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const ClientDashboard = lazy(() => import('./pages/client/ClientDashboard'));
 const ClientRequests = lazy(() => import('./pages/client/ClientRequests'));
 const ClientRequestDetail = lazy(() => import('./pages/client/ClientRequestDetail'));
@@ -66,6 +67,7 @@ const App: React.FC = () => {
           <Route path="/" element={
             isAuthenticated ? <Navigate to="/client/dashboard" /> : <LoginPage />
           } />
+          <Route path="/register" element={isAuthenticated ? <Navigate to="/client/dashboard" replace /> : <RegisterPage />} />
 
           <Route path="/client" element={isAuthenticated ? <ClientLayout /> : <Navigate to="/" replace />}>
             <Route index element={<Navigate to="dashboard" />} />

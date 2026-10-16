@@ -11,7 +11,7 @@ import {
 
 export const ClientDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, requests, orders, offers } = useStore();
+  const { currentClient, requests, orders, offers, addToast } = useStore();
 
   // Filter client's own data
   const myRequests = requests.filter(r => r.clientId === currentClient.id);
@@ -350,7 +350,7 @@ export const ClientDashboard: React.FC = () => {
               Our marketplace support team is here to help you with any questions or order inquiries.
             </p>
             <button
-              onClick={() => alert('Support ticket requested. Our team will contact you inside the platform.')}
+              onClick={() => addToast('info', 'Support requests are not available in the app yet.')}
               className="w-full btn-secondary text-xs font-semibold py-2"
             >
               Contact Support
