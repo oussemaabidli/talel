@@ -16,7 +16,7 @@ Create a local database (for a standard local PostgreSQL installation):
 createdb talel_seller
 ```
 
-Copy `.env.example` to `.env` in this folder and set `DATABASE_URL`, a random `COOKIE_SECRET` with at least 32 characters, and `APP_ORIGINS` for the portals you run (Client 3001, Seller 3002, Host 3003 by default). `PRIVATE_DOCUMENTS_DIR` is resolved relative to this `server/` directory; keep it outside static/public directories and do not commit its contents. Do not commit `.env`.
+Copy `.env.example` to `.env` in this folder and set `DATABASE_URL`, a random `COOKIE_SECRET` with at least 32 characters, and `APP_ORIGINS` for the portals you run (Client 3001, Seller 3002, Host 3003 by default). The Client dev server uses strict port 3001 and stops with an error if it is occupied. `OFFER_EXPIRY_DAYS` defaults to 7 and `OFFER_EXPIRY_REMINDER_HOURS` defaults to 24; the reminder must occur before expiry. `PRIVATE_DOCUMENTS_DIR` is resolved relative to this `server/` directory; keep it outside static/public directories and do not commit its contents. Do not commit `.env`.
 
 ```powershell
 Copy-Item .env.example .env
@@ -57,13 +57,14 @@ Synthetic request fixtures are optional and guarded. In PowerShell, set `$env:AL
 
 Client auth is namespaced under `/api/v1/client/auth` and uses the shared HTTP-only session cookie with explicit `CLIENT` role checks. Registration never accepts a role. Client routes include profile update, owner-scoped request create/list/detail/edit/cancel, owner-scoped offers and atomic acceptance/rejection, order list/detail, participant-scoped conversations/messages, and per-user notifications. Client data is not returned by Seller endpoints. Requests linked to existing legacy rows may still have a null `clientId`; new Client-created requests always use the authenticated user ID.
 
-Apply the additive Client migration with `npm run server:db:deploy` after reviewing the configured database target. This repository change does not apply migrations automatically. Request reference-image uploads are unavailable because the existing private storage is specialized for Seller verification documents; the Client UI says this explicitly and never sends mock image URLs. There is no payment processor or Client-side payment action.
+Apply the additive Client image and request-lifecycle migrations with `npm run server:db:deploy` after reviewing the configured database target. This repository change does not apply migrations automatically. Client request images are stored privately, linked transactionally to their request, and read only through authorized API routes. Each image is limited to 5 MiB and each request to five images. Offer expiry/reminder timestamps preserve historical rows; selecting an offer creates a provisional order while other pending offers remain available. Competing offers close when fulfillment begins. Cancelling a provisional order reopens eligible alternatives without rewriting the accepted offer's history. The Client Support form opens a prefilled email draft; a Host must configure a real support email in Admin → Settings, and the Client must send the draft from their email app. There is no payment processor or Client-side payment action.
 
 ## API routes
 
 All business routes use `/api/v1`. Auth routes:
 
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
+- `GET /support/contact` returns only the configured public support email (or `null` when no real address is configured).
 
 Seller routes (authenticated; commercial routes require verified seller status):
 
@@ -95,7 +96,7 @@ npm run build
 
 The automated API tests cover health, invalid registration, and unauthenticated access. Tests requiring a PostgreSQL instance (database ownership, transactions, and financial calculations) need a configured test database and are not included in the database-free test run.
 
-The PostgreSQL integration tests are enabled when `TEST_DATABASE_URL` points at a disposable database with the migrations applied. In PowerShell, set `$env:TEST_DATABASE_URL` and `$env:DATABASE_URL` to that test database URL, run `npm run server:db:deploy` from the Seller root, then run `npm run server:test`. The integration tests create and remove synthetic seller, Host, and marketplace records.
+The PostgreSQL integration tests require `TEST_DATABASE_URL` to point at a dedicated disposable database whose name clearly contains `test`, `testing`, or `integration`; the guard refuses a missing or ambiguously named target without printing the connection string. Run migrations and tests only against that database. In PowerShell from `server/`, set `$env:TEST_DATABASE_URL` to the dedicated test database URL, set `$env:DATABASE_URL = $env:TEST_DATABASE_URL`, run `npx prisma validate`, `npm run db:deploy`, then `npm run test:integration`. The integration tests create and remove synthetic seller, Host, Client, request, offer, order, and document records. Unit tests require no database URL and refuse to run if only `DATABASE_URL` is set, preventing accidental use of the application database.
 
 ## Private Seller documents
 

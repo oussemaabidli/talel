@@ -10,7 +10,7 @@ import {
 
 export const ClientNotifications: React.FC = () => {
   const navigate = useNavigate();
-  const { clientNotifications, markNotificationRead, markAllNotificationsRead, addToast } = useStore();
+  const { clientNotifications, markNotificationRead, markAllNotificationsRead, clientDataLoadState, clientDataLoadErrors, addToast } = useStore();
 
   const handleMarkAll = async () => {
     try { await clientApiRoutes.markAllRead(); markAllNotificationsRead('client'); addToast('success', 'All notifications marked as read'); }
@@ -58,7 +58,7 @@ export const ClientNotifications: React.FC = () => {
 
       {/* Notifications List */}
       <div className="card overflow-hidden">
-        {clientNotifications.length === 0 ? (
+        {clientDataLoadState.notifications === 'loading' ? <div className="card py-16 text-center text-sm text-text-secondary">Loading notifications…</div> : clientDataLoadState.notifications === 'error' ? <div role="alert" className="card border border-red-200 bg-red-50 p-8 text-center text-sm text-red-800">{clientDataLoadErrors.notifications || 'Notifications could not be loaded.'} <button onClick={() => window.location.reload()} className="ml-2 underline font-semibold">Retry</button></div> : clientNotifications.length === 0 ? (
           <div className="py-16 text-center">
             <Bell size={36} className="text-slate-300 mx-auto mb-2" />
             <h3 className="text-sm font-bold text-navy-900">All caught up!</h3>

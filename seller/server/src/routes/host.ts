@@ -31,6 +31,43 @@ hostRouter.post('/auth/login', hostLoginLimiter, async (req, res, next) => {
 });
 
 hostRouter.use(requireHost);
+hostRouter.get('/support/conversations', async (_req, res, next) => {
+  try {
+    const conversations = await prisma.conversation.findMany({
+      where: { type: 'SUPPORT' },
+      include: {
+        supportClient: { select: { id: true, email: true, clientProfile: { select: { name: true } } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1, include: { sender: { select: { role: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.set('Cache-Control', 'private, no-store').json({ data: conversations });
+  } catch (error) { next(error); }
+});
+hostRouter.get('/support/conversations/:id/messages', async (req, res, next) => {
+  try {
+    const conversationId = String(req.params.id);
+    const conversation = await prisma.conversation.findFirst({ where: { id: conversationId, type: 'SUPPORT' }, select: { id: true } });
+    if (!conversation) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Support conversation not found.' } });
+    res.set('Cache-Control', 'private, no-store').json({ data: await prisma.message.findMany({ where: { conversationId }, orderBy: { createdAt: 'asc' }, take: 500, include: { sender: { select: { id: true, email: true, role: true, clientProfile: { select: { name: true } } } } } }) });
+  } catch (error) { next(error); }
+});
+hostRouter.post('/support/conversations/:id/messages', hostActionLimiter, async (req, res, next) => {
+  try {
+    const { body } = z.object({ body: z.string().trim().min(1).max(4000) }).parse(req.body);
+    const conversationId = String(req.params.id);
+    const conversation = await prisma.conversation.findFirst({ where: { id: conversationId, type: 'SUPPORT' }, select: { id: true, supportClientId: true } });
+    if (!conversation) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Support conversation not found.' } });
+    const message = await prisma.$transaction(async (tx) => {
+      await tx.conversationParticipant.upsert({ where: { conversationId_userId: { conversationId, userId: hostId(req) } }, create: { conversationId, userId: hostId(req) }, update: {} });
+      const saved = await tx.message.create({ data: { conversationId, senderId: hostId(req), body }, include: { sender: { select: { id: true, email: true, role: true } } } });
+      if (conversation.supportClientId) await tx.notification.create({ data: { userId: conversation.supportClientId, type: 'support_reply', title: 'Support replied', message: 'You have a new reply from Talel Support.', link: '/client/support' } });
+      return saved;
+    });
+    res.status(201).json({ data: message });
+  } catch (error) { next(error); }
+});
 hostRouter.get('/auth/me', async (req, res, next) => {
   try { const user = await prisma.user.findUnique({ where: { id: hostId(req) }, select: { id: true, email: true, role: true } }); res.json({ data: user }); }
   catch (error) { next(error); }
@@ -38,20 +75,110 @@ hostRouter.get('/auth/me', async (req, res, next) => {
 
 hostRouter.get('/dashboard', async (_req, res, next) => {
   try {
-    const [users, clients, sellers, pendingSellers, requests, offers, orders, completedOrders, gmv, recentOrders, categories, recentActivity] = await Promise.all([
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    monthStart.setUTCMonth(monthStart.getUTCMonth() - 5);
+    const monthEnd = new Date();
+    monthEnd.setUTCDate(1);
+    monthEnd.setUTCHours(0, 0, 0, 0);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
+    const [users, clients, sellers, pendingSellers, requests, offers, orders, completedOrders, cancelledOrders, activeOrderValue, completedOrderValue, cancelledOrderValue, recentOrders, categories, recentActivity, monthlyRows] = await Promise.all([
       prisma.user.count({ where: { role: { in: ['CLIENT', 'SELLER'] } } }),
       prisma.user.count({ where: { role: 'CLIENT', isActive: true } }),
       prisma.user.count({ where: { role: 'SELLER', isActive: true, profile: { verificationStatus: 'verified' } } }),
       prisma.sellerProfile.count({ where: { verificationStatus: 'pending_verification' } }),
       prisma.marketplaceRequest.count(), prisma.offer.count(), prisma.order.count(),
       prisma.order.count({ where: { status: OrderStatus.COMPLETED } }),
+      prisma.order.count({ where: { status: OrderStatus.CANCELLED } }),
       prisma.order.aggregate({ where: { status: { not: OrderStatus.CANCELLED } }, _sum: { totalAmount: true } }),
-      prisma.order.findMany({ take: 8, orderBy: { createdAt: 'desc' }, include: { request: true, offer: { include: { seller: { include: { profile: true } } } } } }),
+      prisma.order.aggregate({ where: { status: OrderStatus.COMPLETED }, _sum: { totalAmount: true } }),
+      prisma.order.aggregate({ where: { status: OrderStatus.CANCELLED }, _sum: { totalAmount: true } }),
+      prisma.order.findMany({ take: 8, orderBy: { createdAt: 'desc' }, include: {
+        request: { include: { client: { select: { email: true, clientProfile: { select: { name: true } } } } } },
+        offer: { include: { seller: { include: { profile: true } } } },
+      } }),
       prisma.marketplaceCategory.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
       prisma.hostAuditLog.findMany({ take: 8, orderBy: { createdAt: 'desc' }, include: { actor: { select: { email: true } } } }),
+      prisma.$queryRaw<Array<{ month: Date; orderCount: number; orderValueTnd: Prisma.Decimal }>>(Prisma.sql`
+        SELECT date_trunc('month', "createdAt") AS month,
+          count(*)::int AS "orderCount",
+          coalesce(sum("totalAmount") FILTER (WHERE "status" <> 'CANCELLED'), 0)::numeric AS "orderValueTnd"
+        FROM "Order"
+        WHERE "createdAt" >= ${monthStart} AND "createdAt" < ${monthEnd}
+        GROUP BY date_trunc('month', "createdAt")
+        ORDER BY month
+      `),
     ]);
     const categoryCounts = await prisma.marketplaceRequest.groupBy({ by: ['category'], _count: { _all: true }, orderBy: { _count: { category: 'desc' } }, take: 8 });
-    res.json({ data: { users, clients, sellers, pendingSellers, requests, offers, orders, completedOrders, grossOrderValueTnd: gmv._sum.totalAmount?.toString() ?? '0', recentOrders: recentOrders.map((order) => ({ ...order, sellerName: order.offer.seller.profile?.shopName ?? order.offer.seller.email, clientId: order.request.clientId })), categories: categoryCounts.map((item) => ({ name: item.category, value: item._count._all })), recentActivity } });
+    const rowsByMonth = new Map(monthlyRows.map((row) => [row.month.toISOString().slice(0, 7), row]));
+    const monthlyOrderValue = Array.from({ length: 6 }, (_, index) => {
+      const month = new Date(monthStart);
+      month.setUTCMonth(month.getUTCMonth() + index);
+      const key = month.toISOString().slice(0, 7);
+      const row = rowsByMonth.get(key);
+      return { month: key, orderCount: row?.orderCount ?? 0, nonCancelledOrderValueTnd: row?.orderValueTnd.toString() ?? '0' };
+    });
+    res.json({ data: {
+      users, clients, sellers, pendingSellers, requests, offers, orders, completedOrders, cancelledOrders,
+      nonCancelledOrderValueTnd: activeOrderValue._sum.totalAmount?.toString() ?? '0',
+      completedOrderValueTnd: completedOrderValue._sum.totalAmount?.toString() ?? '0',
+      cancelledOrderValueTnd: cancelledOrderValue._sum.totalAmount?.toString() ?? '0',
+      recentOrders: recentOrders.map((order) => ({ ...order, sellerName: order.offer.seller.profile?.shopName ?? order.offer.seller.email, clientId: order.request.clientId })),
+      categories: categoryCounts.map((item) => ({ name: item.category, value: item._count._all })),
+      recentActivity, monthlyOrderValue,
+    } });
+  } catch (error) { next(error); }
+});
+
+const reportRangeSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() })
+  .refine(({ from, to }) => from <= to, { message: 'The start date must not be after the end date.' });
+
+hostRouter.get('/reports', async (req, res, next) => {
+  try {
+    const { from, to } = reportRangeSchema.parse(req.query);
+    const orderRange = { createdAt: { gte: from, lte: to } };
+    const requestRange = { createdAt: { gte: from, lte: to } };
+    const [ordersByStatus, monthlyRows, requestsByCategory, popularParts] = await Promise.all([
+      prisma.order.groupBy({ by: ['status'], where: orderRange, _count: { _all: true }, _sum: { totalAmount: true } }),
+      prisma.$queryRaw<Array<{ month: Date; orderCount: number; completedCount: number; cancelledCount: number; orderValueTnd: Prisma.Decimal; completedOrderValueTnd: Prisma.Decimal }>>(Prisma.sql`
+        SELECT date_trunc('month', "createdAt") AS month,
+          count(*)::int AS "orderCount",
+          count(*) FILTER (WHERE "status" = 'COMPLETED')::int AS "completedCount",
+          count(*) FILTER (WHERE "status" = 'CANCELLED')::int AS "cancelledCount",
+          coalesce(sum("totalAmount") FILTER (WHERE "status" <> 'CANCELLED'), 0)::numeric AS "orderValueTnd",
+          coalesce(sum("totalAmount") FILTER (WHERE "status" = 'COMPLETED'), 0)::numeric AS "completedOrderValueTnd"
+        FROM "Order"
+        WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+        GROUP BY date_trunc('month', "createdAt")
+        ORDER BY month
+      `),
+      prisma.marketplaceRequest.groupBy({ by: ['category'], where: requestRange, _count: { _all: true }, orderBy: { _count: { category: 'desc' } } }),
+      prisma.marketplaceRequest.groupBy({ by: ['partName'], where: requestRange, _count: { _all: true }, orderBy: [{ _count: { partName: 'desc' } }, { partName: 'asc' }], take: 8 }),
+    ]);
+    const statusRows = new Map(ordersByStatus.map((row) => [row.status, row]));
+    const totalOrderCount = ordersByStatus.reduce((sum, row) => sum + row._count._all, 0);
+    const activeOrderValue = ordersByStatus.reduce((sum, row) => row.status === OrderStatus.CANCELLED ? sum : sum.add(row._sum.totalAmount ?? new Prisma.Decimal(0)), new Prisma.Decimal(0));
+    const completed = statusRows.get(OrderStatus.COMPLETED);
+    const cancelled = statusRows.get(OrderStatus.CANCELLED);
+    res.json({ data: {
+      period: { from: from.toISOString(), to: to.toISOString() },
+      orders: {
+        count: totalOrderCount,
+        completedCount: completed?._count._all ?? 0,
+        cancelledCount: cancelled?._count._all ?? 0,
+        nonCancelledOrderValueTnd: activeOrderValue.toString(),
+        completedOrderValueTnd: completed?._sum.totalAmount?.toString() ?? '0',
+        cancelledOrderValueTnd: cancelled?._sum.totalAmount?.toString() ?? '0',
+      },
+      monthlyOrders: monthlyRows.map((row) => ({
+        month: row.month.toISOString().slice(0, 7), orderCount: row.orderCount,
+        completedCount: row.completedCount, cancelledCount: row.cancelledCount,
+        nonCancelledOrderValueTnd: row.orderValueTnd.toString(), completedOrderValueTnd: row.completedOrderValueTnd.toString(),
+      })),
+      requestsByCategory: requestsByCategory.map((row) => ({ name: row.category, count: row._count._all })),
+      popularParts: popularParts.map((row) => ({ name: row.partName, count: row._count._all })),
+    } });
   } catch (error) { next(error); }
 });
 

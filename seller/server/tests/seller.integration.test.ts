@@ -23,6 +23,8 @@ integration('seller database authorization and business rules', () => {
   let requestId = '';
   let conversationId = '';
   let documentId = '';
+  let reportRequestIds: string[] = [];
+  let orderPaginationRequestIds: string[] = [];
 
   beforeAll(async () => {
     const passwordHash = await bcrypt.hash('integration-test-password', 4);
@@ -51,6 +53,8 @@ integration('seller database authorization and business rules', () => {
     await prisma.order.deleteMany({ where: { OR: [{ sellerId: sellerA }, { sellerId: sellerB }] } });
     await prisma.offer.deleteMany({ where: { OR: [{ sellerId: sellerA }, { sellerId: sellerB }] } });
     await prisma.inventoryPart.deleteMany({ where: { OR: [{ sellerId: sellerA }, { sellerId: sellerB }] } });
+    if (reportRequestIds.length) await prisma.marketplaceRequest.deleteMany({ where: { id: { in: reportRequestIds } } });
+    if (orderPaginationRequestIds.length) await prisma.marketplaceRequest.deleteMany({ where: { id: { in: orderPaginationRequestIds } } });
     if (conversationId) await prisma.conversation.deleteMany({ where: { id: conversationId } });
     if (requestId) await prisma.marketplaceRequest.deleteMany({ where: { id: requestId } });
     await prisma.user.deleteMany({ where: { id: { in: [sellerA, sellerB, hostId, pendingSellerId, testClientId] } } });
@@ -109,15 +113,30 @@ integration('seller database authorization and business rules', () => {
       prisma.order.count(),
       prisma.order.aggregate({ _sum: { totalAmount: true }, where: { status: { not: 'CANCELLED' } } }),
     ]);
+    const reportMonthStart = new Date();
+    reportMonthStart.setUTCDate(1);
+    reportMonthStart.setUTCHours(0, 0, 0, 0);
+    const reportTo = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const reportRange = { createdAt: { gte: reportMonthStart, lte: reportTo } };
+    const baselineReportOrders = await prisma.order.groupBy({ by: ['status'], where: reportRange, _count: { _all: true }, _sum: { totalAmount: true } });
+    const baselineReportCount = baselineReportOrders.reduce((sum, row) => sum + row._count._all, 0);
+    const baselineReportValue = baselineReportOrders.reduce((sum, row) => row.status === 'CANCELLED' ? sum : sum.add(row._sum.totalAmount ?? new Prisma.Decimal(0)), new Prisma.Decimal(0));
+    const baselineCompletedValue = baselineReportOrders.find((row) => row.status === 'COMPLETED')?._sum.totalAmount ?? new Prisma.Decimal(0);
+    const baselineCancelledValue = baselineReportOrders.find((row) => row.status === 'CANCELLED')?._sum.totalAmount ?? new Prisma.Decimal(0);
+    const baselineCompletedCount = baselineReportOrders.find((row) => row.status === 'COMPLETED')?._count._all ?? 0;
+    const baselineCancelledCount = baselineReportOrders.find((row) => row.status === 'CANCELLED')?._count._all ?? 0;
     const rows = Array.from({ length: 501 }, (_, index) => ({
       index,
+      requestId: `audit-request-${suffix}-${index}`,
       offerId: `audit-offer-${suffix}-${index}`,
       orderId: `audit-order-${suffix}-${index}`,
       status: index === 500 ? 'CANCELLED' as const : index === 499 ? 'COMPLETED' as const : 'OFFER_ACCEPTED' as const,
       createdAt: new Date(Date.now() - (500 - index) * 1000),
     }));
-    await prisma.offer.createMany({ data: rows.map(({ index, offerId }) => ({ id: offerId, sellerId: sellerA, requestId, partName: `Audit fixture ${index}`, condition: 'NEW' as const, price: 1, quantity: 1 })) });
-    await prisma.order.createMany({ data: rows.map((row) => ({ id: row.orderId, sellerId: sellerA, requestId, offerId: row.offerId, status: row.status, totalAmount: 1, createdAt: row.createdAt })) });
+    orderPaginationRequestIds = rows.map((row) => row.requestId);
+    await prisma.marketplaceRequest.createMany({ data: rows.map((row) => ({ id: row.requestId, clientId: testClientId, partName: `Audit fixture ${row.index}`, category: 'Mechanical', description: 'Synthetic order pagination fixture' })) });
+    await prisma.offer.createMany({ data: rows.map(({ index, offerId, requestId: fixtureRequestId }) => ({ id: offerId, sellerId: sellerA, requestId: fixtureRequestId, partName: `Audit fixture ${index}`, condition: 'NEW' as const, price: 1, quantity: 1 })) });
+    await prisma.order.createMany({ data: rows.map((row) => ({ id: row.orderId, sellerId: sellerA, requestId: row.requestId, offerId: row.offerId, status: row.status, totalAmount: 1, createdAt: row.createdAt })) });
 
     const firstPage = await hostAgent.get('/api/v1/host/transactions?page=1&limit=100').expect(200);
     expect(firstPage.body.data.items).toHaveLength(100);
@@ -128,6 +147,37 @@ integration('seller database authorization and business rules', () => {
     const cancelledPage = await hostAgent.get('/api/v1/host/transactions?page=1&limit=100&status=CANCELLED').expect(200);
     expect(cancelledPage.body.data.items.length).toBeGreaterThanOrEqual(1);
     expect(cancelledPage.body.data.items.every((item: { status: string }) => item.status === 'CANCELLED')).toBe(true);
+
+    expect(await prisma.order.count({ where: { id: { in: rows.map((row) => row.orderId) }, ...reportRange } })).toBe(501);
+    const reportFixtures = Array.from({ length: 205 }, (_, index) => ({
+      id: `audit-report-request-${suffix}-${index}`,
+      clientId: testClientId,
+      partName: 'Report bulk fixture part',
+      category: `Report bulk fixture ${suffix}`,
+      description: 'Synthetic report aggregation test request',
+      status: 'PUBLISHED' as const,
+      createdAt: new Date(),
+    }));
+    reportRequestIds = reportFixtures.map((fixture) => fixture.id);
+    await prisma.marketplaceRequest.createMany({ data: reportFixtures });
+    const reportFrom = reportMonthStart.toISOString();
+    const reportUntil = reportTo.toISOString();
+    const report = await hostAgent.get(`/api/v1/host/reports?from=${encodeURIComponent(reportFrom)}&to=${encodeURIComponent(reportUntil)}`).expect(200);
+    expect(report.body.data.orders.count).toBe(baselineReportCount + 501);
+    expect(report.body.data.orders.completedCount).toBe(baselineCompletedCount + 1);
+    expect(report.body.data.orders.cancelledCount).toBe(baselineCancelledCount + 1);
+    expect(report.body.data.orders.nonCancelledOrderValueTnd).toBe(baselineReportValue.plus(500).toString());
+    expect(report.body.data.orders.completedOrderValueTnd).toBe(baselineCompletedValue.plus(1).toString());
+    expect(report.body.data.orders.cancelledOrderValueTnd).toBe(baselineCancelledValue.plus(1).toString());
+    expect(report.body.data.monthlyOrders.reduce((sum: number, row: { orderCount: number }) => sum + row.orderCount, 0)).toBe(report.body.data.orders.count);
+    expect(report.body.data.requestsByCategory).toContainEqual({ name: `Report bulk fixture ${suffix}`, count: 205 });
+    expect(report.body.data.popularParts).toContainEqual({ name: 'Report bulk fixture part', count: 205 });
+    await hostAgent.get(`/api/v1/host/reports?from=${encodeURIComponent(reportUntil)}&to=${encodeURIComponent(reportFrom)}`).expect(400);
+    const empty = await hostAgent.get('/api/v1/host/reports?from=2000-01-01T00%3A00%3A00.000Z&to=2000-01-02T00%3A00%3A00.000Z').expect(200);
+    expect(empty.body.data.orders).toMatchObject({ count: 0, completedCount: 0, cancelledCount: 0, nonCancelledOrderValueTnd: '0', completedOrderValueTnd: '0', cancelledOrderValueTnd: '0' });
+    expect(empty.body.data.monthlyOrders).toEqual([]);
+    expect(empty.body.data.requestsByCategory).toEqual([]);
+    expect(empty.body.data.popularParts).toEqual([]);
   });
 
   it('enforces the direct-contact setting on Seller message submissions', async () => {

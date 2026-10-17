@@ -19,10 +19,10 @@ export const SellerRequestDetail: React.FC = () => {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([api.get<{ data: { id: string; partName: string; category: string; oemReference: string | null; vehicleMake: string | null; vehicleModel: string | null; vehicleYear: number | null; condition: string; quantity: number; minBudget: string | null; maxBudget: string | null; location: string | null; deliveryMethod: string | null; description: string; status: string; createdAt: string; updatedAt: string; _count: { offers: number } } }>(`/seller/requests/${id}`), api.get<{ data: unknown[] }>(`/seller/offers?requestId=${encodeURIComponent(id)}`)])
+    Promise.all([api.get<{ data: { id: string; partName: string; category: string; oemReference: string | null; referenceUnavailable: boolean; vehicleMake: string | null; vehicleModel: string | null; vehicleYear: number | null; condition: string; quantity: number; minBudget: string | null; maxBudget: string | null; location: string | null; deliveryMethod: string | null; description: string; status: string; createdAt: string; updatedAt: string; _count: { offers: number } } }>(`/seller/requests/${id}`), api.get<{ data: unknown[] }>(`/seller/offers?requestId=${encodeURIComponent(id)}`)])
       .then(([result, offers]) => {
         const data = result.data;
-        const mapped: SparePartRequest = { id: data.id, clientId: '', clientName: 'Marketplace request', vehicle: { id: '', brand: data.vehicleMake || '', model: data.vehicleModel || '', year: data.vehicleYear || 0, engine: '' }, category: data.category, partName: data.partName, referenceNumber: data.oemReference || undefined, quantity: data.quantity, condition: data.condition.toLowerCase() as SparePartRequest['condition'], description: data.description, images: [], minBudget: Number(data.minBudget || 0), maxBudget: Number(data.maxBudget || 0), deliveryMethod: (data.deliveryMethod?.toLowerCase() || 'unknown') as SparePartRequest['deliveryMethod'], location: data.location || '', status: data.status.toLowerCase() as SparePartRequest['status'], offersCount: data._count?.offers ?? 0, createdAt: data.createdAt, updatedAt: data.updatedAt };
+        const mapped: SparePartRequest = { id: data.id, clientId: '', clientName: 'Marketplace request', vehicle: { id: '', brand: data.vehicleMake || '', model: data.vehicleModel || '', year: data.vehicleYear || 0, engine: '' }, category: data.category, partName: data.partName, referenceNumber: data.oemReference || undefined, referenceUnavailable: data.referenceUnavailable, quantity: data.quantity, condition: data.condition.toLowerCase() as SparePartRequest['condition'], description: data.description, images: [], minBudget: Number(data.minBudget || 0), maxBudget: Number(data.maxBudget || 0), deliveryMethod: (data.deliveryMethod?.toLowerCase() || 'unknown') as SparePartRequest['deliveryMethod'], location: data.location || '', status: data.status.toLowerCase() as SparePartRequest['status'], offersCount: data._count?.offers ?? 0, createdAt: data.createdAt, updatedAt: data.updatedAt };
         setRequest(mapped); setMyExistingOffer(offers.data.some((offer) => (offer as { status: string }).status === 'PENDING')); setError('');
       }).catch((cause) => setError(cause instanceof ApiError ? cause.message : 'Unable to load the marketplace request.')).finally(() => setLoading(false));
   }, [id]);
@@ -124,11 +124,11 @@ export const SellerRequestDetail: React.FC = () => {
           <p className="text-sm text-text-primary leading-relaxed bg-surface-secondary p-4 rounded-xl border border-border">
             {request.description}
           </p>
-          {request.referenceNumber && (
+          {request.referenceNumber ? (
             <p className="text-xs text-text-secondary mt-2">
               <strong className="text-navy-900">Buyer Reference / OEM Tag:</strong> {request.referenceNumber}
             </p>
-          )}
+          ) : request.referenceUnavailable ? <p className="text-xs text-text-secondary mt-2"><strong className="text-navy-900">Buyer Reference / OEM Tag:</strong> Client does not have one</p> : null}
         </div>
 
         {/* Compliance notice */}

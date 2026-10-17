@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { clientApiRoutes } from '../../api/client';
-import { StatusBadge, SearchInput, Tabs, ConfirmModal } from '../../components/ui';
+import { StatusBadge, SearchInput, Tabs, Modal } from '../../components/ui';
 import { formatDate } from '../../utils/helpers';
 import type { RequestStatus } from '../../types';
 import {
@@ -12,12 +12,15 @@ import {
 
 export const ClientRequests: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, requests, updateRequestStatus, addToast } = useStore();
+  const { currentClient, requests, updateRequest, clientDataLoadState, clientDataLoadErrors, addToast } = useStore();
 
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [sortBy, setSortBy] = useState<'newest' | 'offers' | 'budget'>('newest');
   const [cancelModalId, setCancelModalId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasonDetails, setCancelReasonDetails] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const myRequests = requests.filter(r => r.clientId === currentClient.id);
 
@@ -38,8 +41,9 @@ export const ClientRequests: React.FC = () => {
         const matchPart = req.partName.toLowerCase().includes(query);
         const matchVehicle = `${req.vehicle.brand} ${req.vehicle.model}`.toLowerCase().includes(query);
         const matchCategory = req.category.toLowerCase().includes(query);
+        const matchLocation = `${req.governorate ?? ''} ${req.location}`.toLowerCase().includes(query);
         const matchId = req.id.toLowerCase().includes(query);
-        return matchPart || matchVehicle || matchCategory || matchId;
+        return matchPart || matchVehicle || matchCategory || matchLocation || matchId;
       }
       return true;
     })
@@ -50,9 +54,16 @@ export const ClientRequests: React.FC = () => {
       return 0;
     });
 
-  const handleCancelRequest = async (id: string) => {
-    try { const updated = await clientApiRoutes.cancelRequest(id); updateRequestStatus(updated.id, String(updated.status).toLowerCase() as any); addToast('info', `Request #${id} has been cancelled`); }
+  const selectedRequest = myRequests.find((request) => request.id === cancelModalId);
+  const needsCancelReason = selectedRequest?.status === 'offers_received';
+  const handleCancelRequest = async () => {
+    if (!cancelModalId || cancelling) return;
+    const reason = cancelReason === 'Other' ? `Other: ${cancelReasonDetails.trim()}` : cancelReason;
+    if (needsCancelReason && (!cancelReason || (cancelReason === 'Other' && !cancelReasonDetails.trim()))) return;
+    setCancelling(true);
+    try { const updated = await clientApiRoutes.cancelRequest(cancelModalId, reason || undefined); updateRequest(updated.id, { status: String(updated.status).toLowerCase() as any, cancellationReason: updated.cancellationReason ?? reason }); addToast('info', `Request #${cancelModalId} has been cancelled`); setCancelModalId(null); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be cancelled.'); }
+    finally { setCancelling(false); }
   };
 
   return (
@@ -106,7 +117,7 @@ export const ClientRequests: React.FC = () => {
 
       {/* Requests Table / Cards */}
       <div className="card overflow-hidden">
-        {filteredRequests.length === 0 ? (
+        {clientDataLoadState.requests === 'loading' ? <div className="py-16 text-center text-sm text-text-secondary">Loading requests…</div> : clientDataLoadState.requests === 'error' ? <div role="alert" className="py-16 text-center text-sm text-red-700">{clientDataLoadErrors.requests || 'Requests could not be loaded.'} <button onClick={() => window.location.reload()} className="ml-2 underline font-semibold">Retry</button></div> : filteredRequests.length === 0 ? (
           <div className="py-16 text-center">
             <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
               <AlertTriangle size={24} />
@@ -183,9 +194,9 @@ export const ClientRequests: React.FC = () => {
                         >
                           <Eye size={15} />
                         </button>
-                        {!['completed', 'cancelled', 'offer_accepted'].includes(req.status) && (
+                        {['published', 'offers_received'].includes(req.status) && (
                           <button
-                            onClick={() => setCancelModalId(req.id)}
+                            onClick={() => { setCancelReason(''); setCancelReasonDetails(''); setCancelModalId(req.id); }}
                             title="Cancel Request"
                             className="p-1.5 rounded-lg border border-border hover:bg-red-50 text-danger transition-colors"
                           >
@@ -203,15 +214,15 @@ export const ClientRequests: React.FC = () => {
       </div>
 
       {/* Cancel Confirmation Modal */}
-      <ConfirmModal
+      <Modal
         isOpen={!!cancelModalId}
-        onClose={() => setCancelModalId(null)}
-        onConfirm={() => cancelModalId && handleCancelRequest(cancelModalId)}
+        onClose={() => { if (!cancelling) setCancelModalId(null); }}
         title="Cancel Part Request"
-        message="Are you sure you want to cancel this request? Sellers will no longer be able to send offers."
-        confirmText="Cancel Request"
-        variant="danger"
-      />
+      >
+        <p className="text-sm text-text-secondary">Sellers will no longer be able to send offers on this request.</p>
+        {needsCancelReason && <div className="mt-4 space-y-2"><label className="label" htmlFor="cancel-request-reason">Why are you cancelling? <span aria-hidden="true">*</span></label><select id="cancel-request-reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="input-field" required><option value="">Select a reason</option><option value="No longer needed">No longer needed</option><option value="Found the part elsewhere">Found the part elsewhere</option><option value="Request details were incorrect">Request details were incorrect</option><option value="Other">Other</option></select>{cancelReason === 'Other' && <textarea aria-label="Describe another reason" value={cancelReasonDetails} onChange={(event) => setCancelReasonDetails(event.target.value)} maxLength={500} className="input-field min-h-20" placeholder="Briefly explain" required />}</div>}
+        <div className="mt-6 flex justify-end gap-3"><button onClick={() => setCancelModalId(null)} disabled={cancelling} className="btn-secondary">Keep request</button><button onClick={() => void handleCancelRequest()} disabled={cancelling || (needsCancelReason && (!cancelReason || (cancelReason === 'Other' && !cancelReasonDetails.trim())))} className="btn-danger">{cancelling ? 'Cancelling…' : 'Cancel request'}</button></div>
+      </Modal>
     </div>
   );
 };

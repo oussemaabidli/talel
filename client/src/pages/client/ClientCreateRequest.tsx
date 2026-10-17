@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { clientApiRoutes } from '../../api/client';
-import { vehicleBrands, vehicleModels } from '../../data/mockData';
 import type { Vehicle, PartCondition, DeliveryMethod } from '../../types';
 import {
   Car, Wrench, FileText, DollarSign, CheckCircle2,
-  ChevronLeft, ChevronRight, Upload, Plus, Check
+  ChevronLeft, ChevronRight, Upload, Plus, Check, Camera, X
 } from 'lucide-react';
 
 export const ClientCreateRequest: React.FC = () => {
@@ -14,47 +13,136 @@ export const ClientCreateRequest: React.FC = () => {
   const { currentClient, addRequest, addToast } = useStore();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
+  const submissionKey = useRef(crypto.randomUUID());
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Form State
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(currentClient.savedVehicles[0] || null);
   const [customVehicle, setCustomVehicle] = useState<Vehicle>({
     id: `v-custom-${Date.now()}`,
-    brand: 'Toyota',
-    model: 'Camry',
-    year: 2021,
-    engine: '2.5L 4-Cylinder',
+    brand: '',
+    model: '',
+    year: 0,
+    engine: '',
   });
-  const [isUsingCustomVehicle, setIsUsingCustomVehicle] = useState(false);
 
   // Step 2: Part
   const [category, setCategory] = useState<string>('');
-  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [partName, setPartName] = useState<string>('');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
+  const [referenceUnavailable, setReferenceUnavailable] = useState(false);
   const [quantity, setQuantity] = useState<number>(1);
   const [condition, setCondition] = useState<PartCondition>('new');
 
   // Step 3: Details
   const [description, setDescription] = useState<string>('');
   const [additionalRequirements, setAdditionalRequirements] = useState<string>('');
+  const [requestPhotos, setRequestPhotos] = useState<Array<{ id: string; originalName: string; previewUrl: string }>>([]);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
 
   // Step 4: Budget & Delivery
   const [minBudget, setMinBudget] = useState<number>(2000);
   const [maxBudget, setMaxBudget] = useState<number>(6000);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery');
   const [location, setLocation] = useState<string>(currentClient.city || '');
+  const [governorate, setGovernorate] = useState('');
+  const [governorates, setGovernorates] = useState<string[]>([]);
 
-  useEffect(() => { clientApiRoutes.categories().then(setCategories).catch((e) => addToast('error', e instanceof Error ? e.message : 'Could not load categories.')); }, [addToast]);
+  useEffect(() => { clientApiRoutes.governorates().then(setGovernorates).catch((e) => addToast('error', e instanceof Error ? e.message : 'Could not load Tunisian governorates.')); }, [addToast]);
 
-  // Available models based on selected brand
-  const activeBrand = isUsingCustomVehicle ? customVehicle.brand : selectedVehicle?.brand || 'Toyota';
-  const modelsForBrand = vehicleModels[activeBrand] || ['Standard'];
+  const handlePhotoSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) return;
+    if (files.length > 5 - requestPhotos.length) {
+      addToast('error', 'A request can include up to five photos.');
+      return;
+    }
+    setIsUploadingPhotos(true);
+    try {
+      for (const file of files) {
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+          addToast('error', `${file.name}: use a JPEG, PNG, or WebP photo.`);
+          continue;
+        }
+        if (file.size === 0 || file.size > 5 * 1024 * 1024) {
+          addToast('error', `${file.name}: each photo must be smaller than 5 MB.`);
+          continue;
+        }
+        const previewUrl = URL.createObjectURL(file);
+        try {
+          const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+            image.onerror = () => reject(new Error('This image could not be opened. Choose a valid photo file.'));
+            image.src = previewUrl;
+          });
+          if (!dimensions.width || !dimensions.height || dimensions.width > 10000 || dimensions.height > 10000 || dimensions.width * dimensions.height > 40000000) {
+            throw new Error('This photo has unsupported dimensions. Choose an image up to 40 megapixels.');
+          }
+          const uploaded = await clientApiRoutes.uploadRequestPhoto(file);
+          setRequestPhotos((previous) => [...previous, { id: uploaded.id, originalName: uploaded.originalName, previewUrl }]);
+        } catch (error) {
+          URL.revokeObjectURL(previewUrl);
+          addToast('error', error instanceof Error ? `${file.name}: ${error.message}` : `${file.name}: photo upload failed.`);
+        }
+      }
+    } finally {
+      setIsUploadingPhotos(false);
+    }
+  };
+
+  const handleRemovePhoto = async (photo: (typeof requestPhotos)[number]) => {
+    try {
+      await clientApiRoutes.deleteRequestPhoto(photo.id);
+      setRequestPhotos((previous) => previous.filter((item) => item.id !== photo.id));
+      URL.revokeObjectURL(photo.previewUrl);
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Photo could not be removed.');
+    }
+  };
 
   const handlePublish = async () => {
-    const finalVehicle = isUsingCustomVehicle ? customVehicle : selectedVehicle;
+    const finalVehicle = customVehicle;
 
-    if (!finalVehicle || !partName.trim() || !categories.some((item) => item.name === category) || !location.trim()) {
-      addToast('error', 'Choose a vehicle, an active category, a location in Tunisia, and enter the part name.');
+    if (!finalVehicle.brand.trim()) {
+      addToast('error', 'Enter the vehicle make.');
+      setCurrentStep(1);
+      return;
+    }
+    if (!finalVehicle.model.trim()) {
+      addToast('error', 'Enter the vehicle model.');
+      setCurrentStep(1);
+      return;
+    }
+    if (finalVehicle.year && (!Number.isInteger(finalVehicle.year) || finalVehicle.year < 1900 || finalVehicle.year > 2100)) {
+      addToast('error', 'Enter a valid vehicle year between 1900 and 2100, or leave it blank.');
+      setCurrentStep(1);
+      return;
+    }
+    if (!category.trim()) {
+      addToast('error', 'Enter a part category.');
+      setCurrentStep(2);
+      return;
+    }
+    if (!partName.trim()) {
+      addToast('error', 'Enter the spare part name.');
+      setCurrentStep(2);
+      return;
+    }
+    if (!referenceNumber.trim() && !referenceUnavailable) {
+      addToast('error', 'Enter a reference number or choose “I don’t have it.”');
+      setCurrentStep(2);
+      return;
+    }
+    if (!location.trim()) {
+      addToast('error', 'Enter your city or address.');
+      setCurrentStep(4);
+      return;
+    }
+    if (!governorates.includes(governorate)) {
+      addToast('error', 'Select a Tunisian governorate.');
+      setCurrentStep(4);
       return;
     }
     if (!Number.isInteger(quantity) || quantity < 1 || minBudget < 0 || maxBudget < 0 || minBudget > maxBudget) {
@@ -62,11 +150,13 @@ export const ClientCreateRequest: React.FC = () => {
       return;
     }
 
+    setIsPublishing(true);
     try {
-      const saved = await clientApiRoutes.createRequest({ partName: partName.trim(), category, oemReference: referenceNumber.trim() || undefined, vehicleMake: finalVehicle.brand, vehicleModel: finalVehicle.model, vehicleYear: finalVehicle.year, condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod, location: location.trim() });
-      addRequest({ id: saved.id, clientId: currentClient.id, clientName: currentClient.name, vehicle: finalVehicle, category: saved.category, partName: saved.partName, referenceNumber: saved.oemReference, quantity: saved.quantity, condition: String(saved.condition).toLowerCase() as PartCondition, description: saved.description, images: [], minBudget: Number(saved.minBudget ?? 0), maxBudget: Number(saved.maxBudget ?? 0), deliveryMethod: (saved.deliveryMethod ?? deliveryMethod) as DeliveryMethod, location: saved.location ?? '', status: String(saved.status).toLowerCase() as any, offersCount: saved._count?.offers ?? 0, createdAt: saved.createdAt, updatedAt: saved.updatedAt });
+      const saved = await clientApiRoutes.createRequest({ partName: partName.trim(), category: category.trim(), oemReference: referenceUnavailable ? undefined : referenceNumber.trim(), referenceUnavailable, vehicleMake: finalVehicle.brand.trim(), vehicleModel: finalVehicle.model.trim(), vehicleEngine: finalVehicle.engine.trim() || undefined, vehicleYear: finalVehicle.year || undefined, governorate, location: location.trim(), photoIds: requestPhotos.map((photo) => photo.id), condition: condition.toUpperCase(), quantity, description: [description.trim(), additionalRequirements.trim()].filter(Boolean).join('\n\nAdditional requirements: '), minBudget, maxBudget, deliveryMethod }, submissionKey.current);
+      addRequest({ id: saved.id, clientId: currentClient.id, clientName: currentClient.name, vehicle: { ...finalVehicle, brand: saved.vehicleMake, model: saved.vehicleModel, engine: saved.vehicleEngine ?? '', year: saved.vehicleYear ?? 0 }, category: saved.category, partName: saved.partName, referenceNumber: saved.oemReference, referenceUnavailable: saved.referenceUnavailable, quantity: saved.quantity, condition: String(saved.condition).toLowerCase() as PartCondition, description: saved.description, images: (saved.images ?? []).map((image: { id: string }) => image.id), minBudget: Number(saved.minBudget ?? 0), maxBudget: Number(saved.maxBudget ?? 0), deliveryMethod: (saved.deliveryMethod ?? deliveryMethod) as DeliveryMethod, location: saved.location ?? '', governorate: saved.governorate, status: String(saved.status).toLowerCase() as any, offersCount: saved._count?.offers ?? 0, createdAt: saved.createdAt, updatedAt: saved.updatedAt });
       addToast('success', 'Request published successfully.'); navigate('/client/requests');
     } catch (e) { addToast('error', e instanceof Error ? e.message : 'Request could not be published.'); }
+    finally { setIsPublishing(false); }
   };
 
   const steps = [
@@ -134,105 +224,32 @@ export const ClientCreateRequest: React.FC = () => {
         {currentStep === 1 && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold text-navy-900">Step 1: Select or Specify Your Vehicle</h2>
+              <h2 className="text-lg font-bold text-navy-900">Step 1: Enter Your Vehicle</h2>
               <p className="text-xs text-text-secondary mt-1">
-                Choose from your saved garage or configure a vehicle for this request.
+                Enter the make and model in your own words. Year and engine are optional; unfamiliar vehicles are accepted.
               </p>
             </div>
 
-            {/* Saved Vehicles Selection */}
-            {currentClient.savedVehicles.length > 0 && (
-              <div>
-                <label className="label">Select from Saved Vehicles</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                  {currentClient.savedVehicles.map((v) => (
-                    <div
-                      key={v.id}
-                      onClick={() => {
-                        setSelectedVehicle(v);
-                        setIsUsingCustomVehicle(false);
-                      }}
-                      className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                        !isUsingCustomVehicle && selectedVehicle?.id === v.id
-                          ? 'border-accent bg-accent-light/20 shadow-sm'
-                          : 'border-border hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-sm text-navy-900">{v.brand} {v.model}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 font-semibold text-slate-700">{v.year}</span>
-                      </div>
-                      <p className="text-xs text-text-secondary mt-1">{v.engine}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Custom vehicle toggle */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setIsUsingCustomVehicle(!isUsingCustomVehicle)}
-                className="text-xs font-semibold text-accent hover:underline flex items-center gap-1.5"
-              >
-                {isUsingCustomVehicle ? '← Use Saved Vehicle Instead' : '+ Enter A Different Vehicle Manually'}
-              </button>
-            </div>
-
-            {/* Manual Vehicle Entry if selected */}
-            {isUsingCustomVehicle && (
-              <div className="p-4 rounded-xl bg-surface-secondary border border-border space-y-4">
-                <p className="text-xs font-bold text-navy-900 uppercase">Manual Vehicle Details</p>
+            <div className="p-4 rounded-xl bg-surface-secondary border border-border space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="label">Brand</label>
-                    <select
-                      value={customVehicle.brand}
-                      onChange={(e) => setCustomVehicle({ ...customVehicle, brand: e.target.value, model: vehicleModels[e.target.value]?.[0] || 'Standard' })}
-                      className="select-field"
-                    >
-                      {vehicleBrands.map((b) => (
-                        <option key={b} value={b}>{b}</option>
-                      ))}
-                    </select>
+                    <label className="label" htmlFor="vehicle-make">Make <span aria-hidden="true">*</span></label>
+                    <input id="vehicle-make" type="text" autoComplete="off" maxLength={80} placeholder="e.g. Peugeot" value={customVehicle.brand} onChange={(e) => setCustomVehicle({ ...customVehicle, brand: e.target.value })} className="input-field" required aria-required="true" />
                   </div>
                   <div>
-                    <label className="label">Model</label>
-                    <select
-                      value={customVehicle.model}
-                      onChange={(e) => setCustomVehicle({ ...customVehicle, model: e.target.value })}
-                      className="select-field"
-                    >
-                      {modelsForBrand.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
+                    <label className="label" htmlFor="vehicle-model">Model <span aria-hidden="true">*</span></label>
+                    <input id="vehicle-model" type="text" autoComplete="off" maxLength={80} placeholder="e.g. 308" value={customVehicle.model} onChange={(e) => setCustomVehicle({ ...customVehicle, model: e.target.value })} className="input-field" required aria-required="true" />
                   </div>
                   <div>
-                    <label className="label">Year</label>
-                    <input
-                      type="number"
-                      min="1990"
-                      max="2026"
-                      value={customVehicle.year}
-                      onChange={(e) => setCustomVehicle({ ...customVehicle, year: parseInt(e.target.value) || 2020 })}
-                      className="input-field"
-                    />
+                    <label className="label" htmlFor="vehicle-year">Year (optional)</label>
+                    <input id="vehicle-year" type="number" min="1900" max="2100" value={customVehicle.year || ''} onChange={(e) => setCustomVehicle({ ...customVehicle, year: Number(e.target.value) || 0 })} className="input-field" />
                   </div>
                   <div>
-                    <label className="label">Engine / Version</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 2.0L Turbo Diesel"
-                      value={customVehicle.engine}
-                      onChange={(e) => setCustomVehicle({ ...customVehicle, engine: e.target.value })}
-                      className="input-field"
-                    />
+                    <label className="label" htmlFor="vehicle-engine">Engine / Version (optional)</label>
+                    <input id="vehicle-engine" type="text" maxLength={80} placeholder="e.g. 2.0L BlueHDi" value={customVehicle.engine} onChange={(e) => setCustomVehicle({ ...customVehicle, engine: e.target.value })} className="input-field" />
                   </div>
                 </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -246,16 +263,18 @@ export const ClientCreateRequest: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="label">Category *</label>
-                <select
+                <label className="label" htmlFor="part-category">Category *</label>
+                <input
+                  id="part-category"
+                  type="text"
+                  maxLength={80}
+                  placeholder="e.g. Brakes, Engine, Electrical"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="select-field"
+                  className="input-field"
                   required
-                >
-                  <option value="">Choose a category</option>
-                  {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
+                  autoComplete="off"
+                />
               </div>
 
               <div>
@@ -271,14 +290,19 @@ export const ClientCreateRequest: React.FC = () => {
               </div>
 
               <div>
-                <label className="label">OEM / Reference Number (Optional)</label>
+                <label className="label" htmlFor="part-reference">OEM / Reference Number</label>
                 <input
+                  id="part-reference"
                   type="text"
                   placeholder="e.g. 04465-06200, FL-500S"
                   value={referenceNumber}
-                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  onChange={(e) => { setReferenceNumber(e.target.value); if (e.target.value) setReferenceUnavailable(false); }}
                   className="input-field"
+                  maxLength={100}
+                  required={!referenceUnavailable}
+                  disabled={referenceUnavailable}
                 />
+                <label className="mt-2 inline-flex items-center gap-2 text-xs text-text-secondary"><input type="checkbox" checked={referenceUnavailable} onChange={(e) => { setReferenceUnavailable(e.target.checked); if (e.target.checked) setReferenceNumber(''); }} />I don’t have the reference number</label>
               </div>
 
               <div>
@@ -343,9 +367,26 @@ export const ClientCreateRequest: React.FC = () => {
               <label className="label">Reference Images</label>
               <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:bg-slate-50 transition-colors">
                 <Upload size={28} className="mx-auto text-text-tertiary mb-2" />
-                <p className="text-xs font-semibold text-navy-900">Reference image uploads are not configured yet.</p>
-                <p className="text-[11px] text-text-secondary mt-1">Your request can still be published with a written description.</p>
-                <p className="mt-3 text-xs text-text-secondary">Image uploads will be available when secure request-image storage is configured.</p>
+                <p className="text-xs font-semibold text-navy-900">Add photos of the part or vehicle label</p>
+                <p className="text-[11px] text-text-secondary mt-1">JPEG, PNG, or WebP · up to 5 MB each · maximum 5 photos</p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <label className="btn-secondary cursor-pointer text-xs">
+                    <Upload size={14} /> Choose photos
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={isUploadingPhotos || requestPhotos.length >= 5} onChange={handlePhotoSelection} className="sr-only" />
+                  </label>
+                  <label className="btn-secondary cursor-pointer text-xs">
+                    <Camera size={14} /> Take a photo
+                    <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={isUploadingPhotos || requestPhotos.length >= 5} onChange={handlePhotoSelection} className="sr-only" />
+                  </label>
+                </div>
+                {isUploadingPhotos && <p role="status" className="mt-3 text-xs text-accent">Validating and securely uploading photo…</p>}
+                {requestPhotos.length > 0 && <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {requestPhotos.map((photo) => <div key={photo.id} className="relative overflow-hidden rounded-lg border border-border bg-white">
+                    <img src={photo.previewUrl} alt={`Preview: ${photo.originalName}`} className="h-32 w-full object-cover" />
+                    <p className="truncate px-2 py-1 text-[11px] text-text-secondary">{photo.originalName}</p>
+                    <button type="button" onClick={() => void handleRemovePhoto(photo)} aria-label={`Remove ${photo.originalName}`} className="absolute right-2 top-2 rounded-full bg-white p-1 text-red-700 shadow hover:bg-red-50"><X size={14} /></button>
+                  </div>)}
+                </div>}
               </div>
             </div>
 
@@ -419,10 +460,18 @@ export const ClientCreateRequest: React.FC = () => {
             </div>
 
             <div>
-              <label className="label">Your City / Location</label>
+              <label className="label" htmlFor="request-governorate">Governorate <span aria-hidden="true">*</span></label>
+              <select id="request-governorate" value={governorate} onChange={(e) => setGovernorate(e.target.value)} className="input-field" required aria-required="true">
+                <option value="">Select a governorate</option>
+                {governorates.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="request-location">City or address <span aria-hidden="true">*</span></label>
               <input
+                id="request-location"
                 type="text"
-                placeholder="Choose your city or governorate in Tunisia"
+                placeholder="Enter the city or delivery address"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="input-field"
@@ -445,11 +494,10 @@ export const ClientCreateRequest: React.FC = () => {
                 <div>
                   <span className="text-[11px] text-text-tertiary uppercase font-semibold">Vehicle</span>
                   <p className="text-sm font-bold text-navy-900">
-                    {(isUsingCustomVehicle ? customVehicle : selectedVehicle)?.brand}{' '}
-                    {(isUsingCustomVehicle ? customVehicle : selectedVehicle)?.model}{' '}
-                    ({(isUsingCustomVehicle ? customVehicle : selectedVehicle)?.year})
+                    {[customVehicle.brand, customVehicle.model].filter(Boolean).join(' ') || 'Not specified'}{' '}
+                    {customVehicle.year ? `(${customVehicle.year})` : ''}
                   </p>
-                  <p className="text-xs text-text-secondary">{(isUsingCustomVehicle ? customVehicle : selectedVehicle)?.engine}</p>
+                  <p className="text-xs text-text-secondary">{customVehicle.engine || 'No engine/version specified'}</p>
                 </div>
 
                 <div>
@@ -461,7 +509,7 @@ export const ClientCreateRequest: React.FC = () => {
                 <div>
                   <span className="text-[11px] text-text-tertiary uppercase font-semibold">Condition</span>
                   <p className="text-sm font-bold text-navy-900 capitalize">{condition}</p>
-                  <p className="text-xs text-text-secondary">Ref: {referenceNumber || 'None'}</p>
+                  <p className="text-xs text-text-secondary">Ref: {referenceUnavailable ? 'Client does not have one' : referenceNumber || 'Not entered'}</p>
                 </div>
 
                 <div>
@@ -515,6 +563,10 @@ export const ClientCreateRequest: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  if (currentStep === 1 && customVehicle.year && (!Number.isInteger(customVehicle.year) || customVehicle.year < 1900 || customVehicle.year > 2100)) {
+                    addToast('error', 'Enter a valid vehicle year between 1900 and 2100, or leave it blank.');
+                    return;
+                  }
                   if (currentStep === 2 && !partName.trim()) {
                     addToast('error', 'Please enter the spare part name');
                     return;
@@ -529,9 +581,10 @@ export const ClientCreateRequest: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handlePublish()}
+                disabled={isUploadingPhotos || isPublishing}
                 className="btn-primary px-6"
               >
-                <CheckCircle2 size={16} /> Publish Request
+                <CheckCircle2 size={16} /> {isPublishing ? 'Publishing…' : 'Publish Request'}
               </button>
             )}
           </div>

@@ -7,7 +7,7 @@ export type UserRole = 'client' | 'seller' | 'host';
 
 export type RequestStatus = 'draft' | 'published' | 'offers_received' | 'offer_accepted' | 'in_progress' | 'completed' | 'cancelled';
 
-export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn' | 'expired';
 
 export type OrderStatus = 'offer_accepted' | 'seller_confirmed' | 'preparing' | 'ready' | 'delivery' | 'completed' | 'cancelled';
 
@@ -17,7 +17,7 @@ export type DeliveryMethod = 'delivery' | 'pickup' | 'both';
 
 export type TransactionStatus = 'pending' | 'processing' | 'completed' | 'refunded' | 'failed';
 
-export type NotificationType = 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'order_confirmed' | 'order_preparing' | 'order_ready' | 'order_shipped' | 'order_completed' | 'request_published' | 'new_request' | 'system';
+export type NotificationType = 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'offer_closed' | 'offer_expired' | 'offer_expiring' | 'order_confirmed' | 'order_preparing' | 'order_ready' | 'order_shipped' | 'order_completed' | 'order_cancelled' | 'request_cancelled' | 'request_published' | 'new_request' | 'system';
 
 // ---------- Core Entities ----------
 export interface User {
@@ -85,6 +85,7 @@ export interface SparePartRequest {
   category: string;
   partName: string;
   referenceNumber?: string;
+  referenceUnavailable?: boolean;
   quantity: number;
   condition: PartCondition;
   description: string;
@@ -94,6 +95,8 @@ export interface SparePartRequest {
   maxBudget: number;
   deliveryMethod: DeliveryMethod;
   location: string;
+  governorate?: string;
+  cancellationReason?: string;
   status: RequestStatus;
   offersCount: number;
   createdAt: string;
@@ -126,6 +129,8 @@ export interface Offer {
   status: OfferStatus;
   createdAt: string;
   expiresAt: string;
+  orderStatus?: string;
+  request?: { id: string; partName: string; status?: string; vehicle?: Partial<Vehicle> };
 }
 
 export interface OrderTimelineEvent {

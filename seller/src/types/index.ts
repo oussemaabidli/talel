@@ -85,6 +85,7 @@ export interface SparePartRequest {
   category: string;
   partName: string;
   referenceNumber?: string;
+  referenceUnavailable?: boolean;
   quantity: number;
   condition: PartCondition;
   description: string;

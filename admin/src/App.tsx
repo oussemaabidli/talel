@@ -19,6 +19,7 @@ const HostReports = lazy(() => import('./pages/admin/HostReports'));
 const HostCategories = lazy(() => import('./pages/admin/HostCategories'));
 const HostActivity = lazy(() => import('./pages/admin/HostActivity'));
 const HostSettings = lazy(() => import('./pages/admin/HostSettings'));
+const HostSupport = lazy(() => import('./pages/admin/HostSupport'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-64">
@@ -65,6 +66,7 @@ const App: React.FC = () => {
             <Route path="categories" element={<HostCategories />} />
             <Route path="activity" element={<HostActivity />} />
             <Route path="settings" element={<HostSettings />} />
+            <Route path="support" element={<HostSupport />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" />} />

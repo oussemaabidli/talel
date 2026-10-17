@@ -19,6 +19,10 @@ interface AppState {
   // Auth
   currentRole: UserRole;
   isAuthenticated: boolean;
+  clientDataLoadState: Record<'requests' | 'offers' | 'orders' | 'notifications' | 'conversations', 'loading' | 'ready' | 'error'>;
+  clientDataLoadErrors: Partial<Record<'requests' | 'offers' | 'orders' | 'notifications' | 'conversations', string>>;
+  beginClientDataLoad: () => void;
+  setClientResourceLoadState: (resource: 'requests' | 'offers' | 'orders' | 'notifications' | 'conversations', state: 'loading' | 'ready' | 'error', message?: string) => void;
   setRole: (role: UserRole) => void;
   login: (role: UserRole) => void;
   logout: () => void;
@@ -91,8 +95,10 @@ interface AppState {
   toasts: Array<{ id: string; type: 'success' | 'error' | 'info'; message: string }>;
   addToast: (type: 'success' | 'error' | 'info', message: string) => void;
   removeToast: (id: string) => void;
-  hydrateClientData: (data: { requests: SparePartRequest[]; offers: Offer[]; orders: Order[]; clientNotifications: Notification[]; conversations: Conversation[] }) => void;
+  hydrateClientData: (data: Partial<{ requests: SparePartRequest[]; offers: Offer[]; orders: Order[]; clientNotifications: Notification[]; conversations: Conversation[] }>) => void;
 }
+
+const initialClientDataLoadState = { requests: 'loading', offers: 'loading', orders: 'loading', notifications: 'loading', conversations: 'loading' } as const;
 
 export const useStore = create<AppState>()(
   persist(
@@ -100,9 +106,19 @@ export const useStore = create<AppState>()(
       // ---------- Auth ----------
       currentRole: 'client',
       isAuthenticated: false,
+      clientDataLoadState: initialClientDataLoadState,
+      clientDataLoadErrors: {},
+      beginClientDataLoad: () => set({
+        requests: [], offers: [], orders: [], clientNotifications: [], conversations: [],
+        clientDataLoadState: initialClientDataLoadState, clientDataLoadErrors: {},
+      }),
+      setClientResourceLoadState: (resource, status, message) => set((state) => ({
+        clientDataLoadState: { ...state.clientDataLoadState, [resource]: status },
+        clientDataLoadErrors: { ...state.clientDataLoadErrors, [resource]: status === 'error' ? (message ?? 'Could not load this section.') : undefined },
+      })),
       setRole: (role) => set({ currentRole: role }),
       login: (role) => set({ currentRole: role, isAuthenticated: true }),
-      logout: () => set({ isAuthenticated: false }),
+      logout: () => set({ isAuthenticated: false, clientDataLoadState: initialClientDataLoadState, clientDataLoadErrors: {} }),
 
       // ---------- Users ----------
       clients: mockClients,
@@ -464,7 +480,7 @@ export const useStore = create<AppState>()(
 
       // ---------- Toast ----------
       toasts: [],
-      hydrateClientData: (data) => set({ ...data, transactions: [] }),
+      hydrateClientData: (data) => set((state) => ({ ...data, transactions: [], clientDataLoadState: { ...state.clientDataLoadState } })),
       addToast: (type, message) => {
         const id = `toast-${Date.now()}`;
         set((state) => ({

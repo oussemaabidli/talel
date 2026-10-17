@@ -10,7 +10,7 @@ import {
 
 export const ClientOrders: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, orders } = useStore();
+  const { currentClient, orders, clientDataLoadState, clientDataLoadErrors } = useStore();
 
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('all');
@@ -94,7 +94,7 @@ export const ClientOrders: React.FC = () => {
       </div>
 
       {/* Orders List / Cards */}
-      {filteredOrders.length === 0 ? (
+      {clientDataLoadState.orders === 'loading' ? <div className="card py-16 text-center text-sm text-text-secondary">Loading orders…</div> : clientDataLoadState.orders === 'error' ? <div role="alert" className="card border border-red-200 bg-red-50 p-8 text-center text-sm text-red-800">{clientDataLoadErrors.orders || 'Orders could not be loaded.'} <button onClick={() => window.location.reload()} className="ml-2 underline font-semibold">Retry</button></div> : filteredOrders.length === 0 ? (
         <div className="card py-16 text-center">
           <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
             <Package size={24} />

@@ -12,7 +12,7 @@ import {
 export const ClientOfferDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { offers, requests, addToast } = useStore();
+  const { offers, requests, clientDataLoadState, clientDataLoadErrors, addToast } = useStore();
 
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -21,8 +21,12 @@ export const ClientOfferDetail: React.FC = () => {
 
   const offer = offers.find((o) => o.id === id);
   const parentRequest = requests.find((r) => r.id === offer?.requestId);
+  const requestStatus = parentRequest?.status ?? offer?.request?.status;
+  const vehicle = parentRequest?.vehicle ?? offer?.request?.vehicle;
 
   if (!offer) {
+    if (clientDataLoadState.offers === 'loading') return <div role="status" className="card mx-auto my-12 max-w-lg p-12 text-center text-sm text-text-secondary">Loading offer…</div>;
+    if (clientDataLoadState.offers === 'error') return <div role="alert" className="card mx-auto my-12 max-w-lg p-8 text-center text-sm text-red-800">{clientDataLoadErrors.offers || 'Offers could not be loaded.'}<button onClick={() => window.location.reload()} className="ml-2 font-semibold underline">Retry</button></div>;
     return (
       <div className="card p-12 text-center max-w-lg mx-auto my-12">
         <AlertCircle size={36} className="text-danger mx-auto mb-3" />
@@ -55,6 +59,9 @@ export const ClientOfferDetail: React.FC = () => {
   };
 
   const totalAmount = offer.price * offer.quantity + offer.deliveryCost;
+  const offerExpired = offer.expiresAt ? new Date(offer.expiresAt).getTime() <= Date.now() : false;
+  const requestCanSelectOffer = ['published', 'offers_received'].includes(requestStatus ?? '');
+  const canSelectOffer = offer.status === 'pending' && !offerExpired && requestCanSelectOffer;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-16">
@@ -77,6 +84,9 @@ export const ClientOfferDetail: React.FC = () => {
             Received {formatDate(offer.createdAt)}
           </span>
         </div>
+        {offer.expiresAt && <p className="mt-1 text-xs text-text-secondary">{offerExpired ? 'Expired' : 'Valid until'} {formatDate(offer.expiresAt)}</p>}
+        {offer.status === 'accepted' && offer.orderStatus === 'cancelled' && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">The order created from this accepted offer was cancelled. The offer record remains in your history.</p>}
+        {offer.status === 'pending' && requestStatus === 'offer_accepted' && <p className="mt-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Another offer is in discussion. This offer remains available to review and message; it can be selected if the current order is cancelled.</p>}
       </div>
 
       {/* Main Grid: Offer Details & Price Checkout Card */}
@@ -147,7 +157,7 @@ export const ClientOfferDetail: React.FC = () => {
           </div>
 
           {/* Target Vehicle Reference */}
-          {parentRequest && (
+          {vehicle && (
             <div className="card p-5 bg-slate-50 border-slate-200">
               <div className="flex items-center gap-2 text-xs font-bold text-navy-900 mb-2">
                 <Car size={16} className="text-accent" />
@@ -156,7 +166,7 @@ export const ClientOfferDetail: React.FC = () => {
               <p className="text-xs text-text-secondary">
                 This quote was provided in response to your request for{' '}
                 <span className="font-semibold text-navy-900">
-                  {parentRequest.vehicle.brand} {parentRequest.vehicle.model} ({parentRequest.vehicle.year}) - {parentRequest.vehicle.engine}
+                  {[vehicle.brand, vehicle.model].filter(Boolean).join(' ')}{vehicle.year ? ` (${vehicle.year})` : ''}{vehicle.engine ? ` - ${vehicle.engine}` : ''}
                 </span>.
               </p>
             </div>
@@ -193,26 +203,27 @@ export const ClientOfferDetail: React.FC = () => {
             </div>
 
             {/* Actions */}
-            {offer.status === 'pending' ? (
+            {canSelectOffer || (offer.status === 'pending' && !offerExpired && !requestCanSelectOffer && requestStatus === 'offer_accepted') ? (
               <div className="space-y-2.5 pt-2">
-                <button
+                {canSelectOffer && <button
                   onClick={() => setIsAcceptModalOpen(true)}
                   className="w-full btn-primary py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow"
                 >
-                  <CheckCircle2 size={18} /> Accept Offer & Order
-                </button>
+                  <CheckCircle2 size={18} /> Select Offer & Start Discussion
+                </button>}
 
-                <button
+                {requestCanSelectOffer && <button
                   onClick={() => setIsRejectModalOpen(true)}
                   className="w-full btn-secondary text-xs py-2.5 text-danger hover:bg-red-50 flex items-center justify-center gap-1.5"
                 >
                   <XCircle size={15} /> Reject Offer
-                </button>
+                </button>}
+                {!requestCanSelectOffer && <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">You can continue reviewing and messaging about this offer. To select it, cancel the current provisional order first.</p>}
               </div>
             ) : (
               <div className="p-3 rounded-xl bg-surface-secondary text-center">
                 <p className="text-xs font-bold capitalize text-navy-900">
-                  This offer is {offer.status}
+                  {offerExpired ? 'This offer has expired.' : `This offer is ${offer.status}.`}
                 </p>
               </div>
             )}
@@ -232,8 +243,8 @@ export const ClientOfferDetail: React.FC = () => {
         onClose={() => setIsAcceptModalOpen(false)}
         onConfirm={handleConfirmAccept}
         title="Confirm Offer Acceptance"
-        message={`Are you sure you want to accept this offer from ${offer.sellerShop} for ${formatCurrency(totalAmount)}? This will convert the offer into an active order.`}
-        confirmText="Confirm & Create Order"
+        message={`Select this offer from ${offer.sellerShop} for ${formatCurrency(totalAmount)} and open a provisional order for seller confirmation? No payment is processed. Other offers stay pending until fulfillment begins.`}
+        confirmText="Select offer"
         variant="primary"
       />
 

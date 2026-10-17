@@ -13,7 +13,7 @@ import {
 export const ClientOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { orders, conversations, currentClient, updateOrder, addMessage, addToast } = useStore();
+  const { orders, conversations, currentClient, clientDataLoadState, clientDataLoadErrors, updateOrder, updateRequestStatus, addMessage, addToast } = useStore();
 
   const [messageInput, setMessageInput] = useState('');
 
@@ -39,6 +39,8 @@ export const ClientOrderDetail: React.FC = () => {
   }, [conversation?.id, id, addToast]);
 
   if (!order) {
+    if (clientDataLoadState.orders === 'loading') return <div role="status" className="card mx-auto my-12 max-w-lg p-12 text-center text-sm text-text-secondary">Loading order…</div>;
+    if (clientDataLoadState.orders === 'error') return <div role="alert" className="card mx-auto my-12 max-w-lg p-8 text-center text-sm text-red-800">{clientDataLoadErrors.orders || 'Orders could not be loaded.'}<button onClick={() => window.location.reload()} className="ml-2 font-semibold underline">Retry</button></div>;
     return (
       <div className="card p-12 text-center max-w-lg mx-auto my-12">
         <AlertCircle size={36} className="text-danger mx-auto mb-3" />
@@ -63,7 +65,7 @@ export const ClientOrderDetail: React.FC = () => {
   };
 
   const handleCancelOrder = async () => {
-    try { const updated = await clientApiRoutes.cancelOrder(order.id); updateOrder(order.id, { status: String(updated.status).toLowerCase() as any, updatedAt: updated.updatedAt }); addToast('success', 'Order cancelled.'); }
+    try { const updated = await clientApiRoutes.cancelOrder(order.id); updateOrder(order.id, { status: String(updated.status).toLowerCase() as any, updatedAt: updated.updatedAt }); updateRequestStatus(order.requestId, String(updated.requestStatus).toLowerCase() as any); addToast('success', 'Order cancelled. Available alternative offers have been reopened.'); }
     catch (e) { addToast('error', e instanceof Error ? e.message : 'Order could not be cancelled.'); }
   };
 

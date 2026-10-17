@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/db.js';
@@ -23,6 +23,20 @@ describe('Talel Seller API', () => {
     expect(response.body.paths['/client/auth/register'].post.security).toEqual([]);
     expect(response.body.paths['/auth/register'].post.security).toEqual([]);
     expect(response.body.paths['/host/sellers/{sellerId}/documents/{documentId}/review'].patch.security[0].hostSession).toBeDefined();
+    expect(response.body.paths['/host/reports'].get.security[0].hostSession).toBeDefined();
+    expect(response.body.paths['/support/contact'].get.security).toEqual([]);
+  });
+
+  it('exposes only a configured support address and hides the seeded placeholder', async () => {
+    const lookup = vi.spyOn(prisma.platformSetting, 'findUnique');
+    try {
+      lookup.mockResolvedValueOnce({ value: 'support@autopartspro.dz' } as any);
+      const placeholder = await request(app).get('/api/v1/support/contact').expect(200);
+      expect(placeholder.body.data).toEqual({ email: null });
+      lookup.mockResolvedValueOnce({ value: 'help@example.test' } as any);
+      const configured = await request(app).get('/api/v1/support/contact').expect(200);
+      expect(configured.body.data).toEqual({ email: 'help@example.test' });
+    } finally { lookup.mockRestore(); }
   });
 
   it('validates registration before touching the database', async () => {
@@ -97,6 +111,37 @@ describe('Talel Seller API', () => {
     expect(response.status).toBe(204);
     expect(response.headers['access-control-allow-origin']).toBe('http://127.0.0.1:3003');
     expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it('allows the documented Client development origin with credentials', async () => {
+    const response = await request(app).options('/api/v1/client/auth/login')
+      .set('Origin', 'http://localhost:3001')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type');
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:3001');
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it('allows the documented Admin localhost origin with credentials', async () => {
+    const response = await request(app).options('/api/v1/host/auth/login')
+      .set('Origin', 'http://localhost:3003')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type');
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:3003');
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it('rejects unsupported Admin origins without emitting credentialed CORS headers', async () => {
+    const response = await request(app).options('/api/v1/host/auth/login')
+      .set('Origin', 'http://localhost:3004')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type');
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('ORIGIN_NOT_ALLOWED');
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    expect(response.headers['access-control-allow-credentials']).toBeUndefined();
   });
 
   it('requires a Seller session before accepting private document bytes', async () => {

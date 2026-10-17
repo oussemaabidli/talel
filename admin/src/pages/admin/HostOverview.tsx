@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { StatusBadge, Avatar } from '../../components/ui';
-import { formatCurrency, formatDate, formatTimeAgo } from '../../utils/helpers';
+import { formatCurrency, formatTimeAgo } from '../../utils/helpers';
+import { hostApi } from '../../api/host';
 import {
   Users, UserCheck, Store, FileText, Package, CheckCircle2,
   DollarSign, TrendingUp, ArrowRight, Shield, Layers, Activity
@@ -11,30 +12,50 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
+type HostDashboard = {
+  users: number; clients: number; sellers: number; requests: number; orders: number; completedOrders: number;
+  nonCancelledOrderValueTnd: string;
+  monthlyOrderValue: Array<{ month: string; orderCount: number; nonCancelledOrderValueTnd: string }>;
+  categories: Array<{ name: string; value: number }>;
+  recentOrders: any[];
+  recentActivity: any[];
+};
+
 export const HostOverview: React.FC = () => {
   const navigate = useNavigate();
-  const { clients, sellers, requests, orders, transactionTotals, activityLogs } = useStore();
+  const addToast = useStore((state) => state.addToast);
+  const [dashboard, setDashboard] = useState<HostDashboard | null>(null);
+  useEffect(() => {
+    let active = true;
+    hostApi<HostDashboard>('/host/dashboard').then((data) => { if (active) setDashboard(data); })
+      .catch((error) => { if (active) addToast('error', error instanceof Error ? error.message : 'Unable to load dashboard statistics.'); });
+    return () => { active = false; };
+  }, [addToast]);
 
-  const totalClients = clients.length;
-  const totalSellers = sellers.filter((seller) => seller.isVerified).length;
-  const totalUsers = totalClients + totalSellers;
-  const totalOrders = orders.length;
-  const completedOrders = orders.filter(o => o.status === 'completed').length;
-
-  // Platform GMV & Revenue
-  const totalPlatformGMV = Number(transactionTotals.grossOrderValueTnd);
-
-  const revenueChartData = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(); date.setMonth(date.getMonth() - 5 + index);
-    const name = date.toLocaleString('en', { month: 'short' });
-    const value = orders.filter(order => { const created = new Date(order.createdAt); return created.getMonth() === date.getMonth() && created.getFullYear() === date.getFullYear(); }).reduce((sum, order) => sum + order.totalAmount, 0);
-    return { name, value };
-  });
-  const partsByCategory = requests.reduce<Record<string, number>>((totals, request) => ({ ...totals, [request.category]: (totals[request.category] ?? 0) + 1 }), {});
-  const popularPartsData = Object.entries(partsByCategory).map(([name, value]) => ({ name, value }));
-
-  const recentOrders = orders.slice(0, 5);
-  const recentLogs = activityLogs.slice(0, 6);
+  const totalClients = dashboard?.clients ?? 0;
+  const totalSellers = dashboard?.sellers ?? 0;
+  const totalUsers = dashboard?.users ?? 0;
+  const totalOrders = dashboard?.orders ?? 0;
+  const completedOrders = dashboard?.completedOrders ?? 0;
+  const nonCancelledOrderValue = Number(dashboard?.nonCancelledOrderValueTnd ?? 0);
+  const revenueChartData = (dashboard?.monthlyOrderValue ?? []).map((item) => ({
+    name: new Date(`${item.month}-01T00:00:00Z`).toLocaleString('en', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+    value: Number(item.nonCancelledOrderValueTnd),
+  }));
+  const popularPartsData = (dashboard?.categories ?? []).map((item) => ({ name: item.name, value: item.value }));
+  const recentOrders = (dashboard?.recentOrders ?? []).slice(0, 5).map((order) => ({
+    id: order.id,
+    partName: order.offer.partName,
+    clientName: order.request.client?.clientProfile?.name ?? order.request.client?.email ?? 'Unknown buyer',
+    sellerShop: order.sellerName,
+    totalAmount: Number(order.totalAmount),
+    status: order.status === 'DISPATCHED' ? 'delivery' : String(order.status).toLowerCase(),
+    createdAt: order.createdAt,
+  }));
+  const recentLogs = (dashboard?.recentActivity ?? []).map((log) => ({
+    id: log.id, userName: log.actor.email, userRole: 'host',
+    details: `${log.entityType} ${log.entityId}`, timestamp: log.createdAt,
+  }));
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-16">
@@ -82,7 +103,7 @@ export const HostOverview: React.FC = () => {
         <div className="stat-card !p-4">
           <span className="text-[10px] font-bold text-text-secondary uppercase">Active Clients</span>
           <p className="text-xl font-extrabold text-navy-900 mt-2">{totalClients}</p>
-          <span className="text-[10px] text-accent font-semibold">Car owners</span>
+            <span className="text-[10px] text-accent font-semibold">Active accounts</span>
         </div>
 
         <div className="stat-card !p-4">
@@ -93,14 +114,14 @@ export const HostOverview: React.FC = () => {
 
         <div className="stat-card !p-4">
           <span className="text-[10px] font-bold text-text-secondary uppercase">Total Requests</span>
-          <p className="text-xl font-extrabold text-navy-900 mt-2">{requests.length}</p>
+          <p className="text-xl font-extrabold text-navy-900 mt-2">{dashboard?.requests ?? 0}</p>
           <span className="text-[10px] text-purple-600 font-semibold">High intent</span>
         </div>
 
         <div className="stat-card !p-4">
           <span className="text-[10px] font-bold text-text-secondary uppercase">Total Orders</span>
           <p className="text-xl font-extrabold text-navy-900 mt-2">{totalOrders}</p>
-          <span className="text-[10px] text-accent font-semibold">Gross matched</span>
+          <span className="text-[10px] text-accent font-semibold">Marketplace orders</span>
         </div>
 
         <div className="stat-card !p-4">
@@ -110,11 +131,11 @@ export const HostOverview: React.FC = () => {
         </div>
 
         <div className="stat-card !p-4">
-          <span className="text-[10px] font-bold text-text-secondary uppercase">Platform GMV</span>
+          <span className="text-[10px] font-bold text-text-secondary uppercase">Non-cancelled order value</span>
           <p className="text-sm font-extrabold text-navy-900 mt-2.5 truncate">
-            {formatCurrency(totalPlatformGMV)}
+            {formatCurrency(nonCancelledOrderValue)}
           </p>
-          <span className="text-[10px] text-text-secondary">Gross GMV</span>
+          <span className="text-[10px] text-text-secondary">Not collected payment revenue</span>
         </div>
 
         <div className="stat-card !p-4 bg-green-50/50 border-green-200">
@@ -130,8 +151,8 @@ export const HostOverview: React.FC = () => {
         <div className="lg:col-span-8 card p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-base font-bold text-navy-900">Platform GMV Growth Trajectory</h2>
-              <p className="text-xs text-text-secondary">Monthly gross merchandise value across recorded orders (TND)</p>
+              <h2 className="text-base font-bold text-navy-900">Marketplace Order Value</h2>
+              <p className="text-xs text-text-secondary">Monthly value of non-cancelled orders (TND); payments are not connected.</p>
             </div>
             <button
               onClick={() => navigate('/admin/reports')}
@@ -154,7 +175,7 @@ export const HostOverview: React.FC = () => {
                 <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} />
                 <YAxis stroke="#94A3B8" fontSize={11} tickFormatter={(v) => `${v / 1000}k`} />
                 <Tooltip
-                  formatter={(val: any) => [`${val.toLocaleString()} TND`, 'GMV']}
+                  formatter={(val: any) => [`${val.toLocaleString()} TND`, 'Order value']}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '12px' }}
                 />
                 <Area type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={3} fill="url(#hostRevenueGrad)" />

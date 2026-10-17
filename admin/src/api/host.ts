@@ -51,6 +51,15 @@ export async function hostLogin(email: string, password: string) {
   return hostApi<{ user: { id: string; email: string; role: 'HOST' } }>('/host/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
 }
 
+export type SupportConversation = {
+  id: string; createdAt: string; supportClient: { id: string; email: string; clientProfile: { name: string } | null } | null;
+  messages: Array<{ createdAt: string; sender: { role: 'CLIENT' | 'HOST' } }>;
+};
+export type SupportMessage = { id: string; conversationId: string; senderId: string; body: string; createdAt: string; sender: { id: string; email: string; role: 'CLIENT' | 'HOST'; clientProfile?: { name: string } | null } };
+export const listSupportConversations = () => hostApi<SupportConversation[]>('/host/support/conversations');
+export const listSupportMessages = (id: string) => hostApi<SupportMessage[]>(`/host/support/conversations/${encodeURIComponent(id)}/messages`);
+export const replyToSupportConversation = (id: string, body: string) => hostApi<SupportMessage>(`/host/support/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify({ body }) });
+
 export type HostSellerDocument = {
   id: string; kind: string; originalName: string; mimeType: string; size: number;
   status: 'pending' | 'approved' | 'rejected'; rejectionReason: string | null;

@@ -5,7 +5,7 @@ import { Avatar } from '../components/ui';
 import { hostApi } from '../api/host';
 import {
   LayoutDashboard, Users, UserCheck, Store, FileText, Tag, Package,
-  CreditCard, BarChart3, Layers, Activity, Settings, Search,
+  CreditCard, BarChart3, Layers, Activity, Settings, Search, MessageSquare,
   ChevronDown, LogOut, Menu, X, Settings as Cog, Shield
 } from 'lucide-react';
 
@@ -21,6 +21,7 @@ const navItems = [
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
   { to: '/admin/categories', icon: Layers, label: 'Categories' },
   { to: '/admin/activity', icon: Activity, label: 'Activity Logs' },
+  { to: '/admin/support', icon: MessageSquare, label: 'Client Support' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },
 ];
 

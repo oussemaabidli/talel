@@ -11,7 +11,7 @@ import {
 
 export const ClientOffers: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, requests, offers } = useStore();
+  const { currentClient, requests, offers, clientDataLoadState, clientDataLoadErrors } = useStore();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -23,7 +23,7 @@ export const ClientOffers: React.FC = () => {
 
   // Offers for current client's requests
   const myRequests = requests.filter(r => r.clientId === currentClient.id);
-  const myOffers = offers.filter(o => myRequests.some(r => r.id === o.requestId));
+  const myOffers = offers;
   const offerTotal = (offer: Offer) => offer.price * offer.quantity + offer.deliveryCost;
 
   const tabs = [
@@ -31,6 +31,8 @@ export const ClientOffers: React.FC = () => {
     { id: 'pending', label: 'Pending', count: myOffers.filter(o => o.status === 'pending').length },
     { id: 'accepted', label: 'Accepted', count: myOffers.filter(o => o.status === 'accepted').length },
     { id: 'rejected', label: 'Rejected', count: myOffers.filter(o => o.status === 'rejected').length },
+    { id: 'withdrawn', label: 'Withdrawn', count: myOffers.filter(o => o.status === 'withdrawn').length },
+    { id: 'expired', label: 'Expired', count: myOffers.filter(o => o.status === 'expired').length },
   ];
 
   const filteredOffers = myOffers
@@ -118,7 +120,7 @@ export const ClientOffers: React.FC = () => {
       </div>
 
       {/* Offers Grid */}
-      {filteredOffers.length === 0 ? (
+      {clientDataLoadState.offers === 'loading' ? <div className="card py-16 text-center text-sm text-text-secondary">Loading offers…</div> : clientDataLoadState.offers === 'error' ? <div role="alert" className="card border border-red-200 bg-red-50 p-8 text-center text-sm text-red-800">{clientDataLoadErrors.offers || 'Offers could not be loaded.'} <button onClick={() => window.location.reload()} className="ml-2 underline font-semibold">Retry</button></div> : filteredOffers.length === 0 ? (
         <div className="card py-16 text-center">
           <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
             <Tag size={24} />
@@ -130,7 +132,7 @@ export const ClientOffers: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredOffers.map((offer) => {
             const isComparing = comparingOffers.some(o => o.id === offer.id);
-            const parentReq = myRequests.find(r => r.id === offer.requestId);
+            const parentReq = myRequests.find(r => r.id === offer.requestId) ?? offer.request;
 
             return (
               <div
@@ -144,7 +146,7 @@ export const ClientOffers: React.FC = () => {
                   {parentReq && (
                     <div className="mb-3 pb-2 border-b border-border flex items-center justify-between text-[11px] text-text-tertiary">
                       <span className="font-semibold text-text-secondary truncate">
-                        For: {parentReq.vehicle.brand} {parentReq.vehicle.model}
+                        For: {parentReq.vehicle?.brand ?? ''} {parentReq.vehicle?.model ?? ''}
                       </span>
                       <span className="font-mono">#{offer.requestId}</span>
                     </div>
@@ -164,6 +166,7 @@ export const ClientOffers: React.FC = () => {
                     </div>
                     <StatusBadge status={offer.status} />
                   </div>
+                  {offer.status === 'accepted' && offer.orderStatus === 'cancelled' && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-900">The linked order was cancelled.</p>}
 
                   {/* Part & Price */}
                   <div className="mt-4">

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { formatCurrency } from '../../utils/helpers';
+import { hostApi } from '../../api/host';
 import {
   BarChart3, TrendingUp, Users, Package, FileText,
   DollarSign, Award, Layers
@@ -11,20 +12,42 @@ import {
 
 const COLORS = ['#22C55E', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#64748B'];
 
+type HostReport = {
+  orders: {
+    count: number; completedCount: number; cancelledCount: number;
+    nonCancelledOrderValueTnd: string; completedOrderValueTnd: string; cancelledOrderValueTnd: string;
+  };
+  monthlyOrders: Array<{ month: string; orderCount: number; nonCancelledOrderValueTnd: string }>;
+  requestsByCategory: Array<{ name: string; count: number }>;
+  popularParts: Array<{ name: string; count: number }>;
+};
+
 export const HostReports: React.FC = () => {
-  const { clients, sellers, requests, orders } = useStore();
+  const addToast = useStore((state) => state.addToast);
+  const [report, setReport] = useState<HostReport | null>(null);
   const [activeTab, setActiveTab] = useState<'revenue' | 'orders' | 'categories' | 'parts'>('revenue');
   const [dateFilter, setDateFilter] = useState<'30d' | '90d' | '1y'>('30d');
-  const monthCount = dateFilter === '30d' ? 1 : dateFilter === '90d' ? 3 : 12;
-  const months = Array.from({ length: monthCount }, (_, index) => {
-    const date = new Date(); date.setMonth(date.getMonth() - (monthCount - index - 1));
-    return { date, name: date.toLocaleString('en', { month: 'short' }) };
-  });
-  const revenueChartData = months.map(({ date, name }) => ({ name, value: orders.filter((order) => { const created = new Date(order.createdAt); return created.getMonth() === date.getMonth() && created.getFullYear() === date.getFullYear(); }).reduce((total, order) => total + order.totalAmount, 0) }));
-  const ordersChartData = months.map(({ date, name }) => ({ name, value: orders.filter((order) => { const created = new Date(order.createdAt); return created.getMonth() === date.getMonth() && created.getFullYear() === date.getFullYear(); }).length }));
-  const categoryCounts = requests.reduce<Record<string, number>>((counts, request) => ({ ...counts, [request.category]: (counts[request.category] ?? 0) + 1 }), {});
-  const requestsByCategory = Object.entries(categoryCounts).map(([name, value]) => ({ name, value }));
-  const popularPartsData = Object.entries(requests.reduce<Record<string, number>>((counts, request) => ({ ...counts, [request.partName]: (counts[request.partName] ?? 0) + 1 }), {})).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  useEffect(() => {
+    let active = true;
+    const to = new Date();
+    const from = new Date(to);
+    from.setUTCDate(from.getUTCDate() - (dateFilter === '30d' ? 30 : dateFilter === '90d' ? 90 : 365));
+    const query = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+    hostApi<HostReport>(`/host/reports?${query}`).then((data) => { if (active) setReport(data); })
+      .catch((error) => { if (active) addToast('error', error instanceof Error ? error.message : 'Unable to load reports.'); });
+    return () => { active = false; };
+  }, [dateFilter, addToast]);
+
+  const revenueChartData = (report?.monthlyOrders ?? []).map((row) => ({
+    name: new Date(`${row.month}-01T00:00:00Z`).toLocaleString('en', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+    value: Number(row.nonCancelledOrderValueTnd),
+  }));
+  const ordersChartData = (report?.monthlyOrders ?? []).map((row) => ({
+    name: new Date(`${row.month}-01T00:00:00Z`).toLocaleString('en', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+    value: row.orderCount,
+  }));
+  const requestsByCategory = (report?.requestsByCategory ?? []).map((row) => ({ name: row.name, value: row.count }));
+  const popularPartsData = (report?.popularParts ?? []).map((row) => ({ name: row.name, value: row.count }));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -33,7 +56,7 @@ export const HostReports: React.FC = () => {
         <div>
           <h1 className="text-2xl font-extrabold text-navy-900">Platform Analytics & Intelligence</h1>
           <p className="text-sm text-text-secondary">
-            Cross-marketplace analytics covering revenue trends, liquidity, conversion rates, and catalog popularity.
+            Order value is not payment revenue. No payments, commissions, refunds, or settlements are processed by Talel.
           </p>
         </div>
 
@@ -55,7 +78,7 @@ export const HostReports: React.FC = () => {
       {/* Report Category Switcher */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { id: 'revenue', label: 'GMV & Revenue', icon: DollarSign },
+          { id: 'revenue', label: 'Order Value', icon: DollarSign },
           { id: 'orders', label: 'Order Volume', icon: Package },
           { id: 'categories', label: 'Categories Share', icon: Layers },
           { id: 'parts', label: 'Top Requested Parts', icon: BarChart3 },
@@ -92,10 +115,21 @@ export const HostReports: React.FC = () => {
           <div>
             <div className="flex justify-between items-baseline mb-6">
               <div>
-                <h2 className="text-base font-bold text-navy-900">Gross Platform Volume (TND)</h2>
-                <p className="text-xs text-text-secondary">Gross sales processed across all supplier quotations</p>
+                <h2 className="text-base font-bold text-navy-900">Non-cancelled Order Value (TND)</h2>
+                <p className="text-xs text-text-secondary">Recorded value of marketplace orders, excluding cancelled orders. This is not collected revenue.</p>
               </div>
-              <span className="text-sm font-extrabold text-navy-900">Recorded: {orders.reduce((total, order) => total + order.totalAmount, 0).toLocaleString()} TND</span>
+              <span className="text-sm font-extrabold text-navy-900">{formatCurrency(Number(report?.orders?.nonCancelledOrderValueTnd ?? 0))}</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+              <div className="rounded-lg bg-surface-secondary p-3">
+                <span className="text-xs font-semibold text-text-secondary">Completed order value</span>
+                <p className="mt-1 font-bold text-navy-900">{formatCurrency(Number(report?.orders?.completedOrderValueTnd ?? 0))}</p>
+              </div>
+              <div className="rounded-lg bg-surface-secondary p-3">
+                <span className="text-xs font-semibold text-text-secondary">Cancelled order value (excluded above)</span>
+                <p className="mt-1 font-bold text-navy-900">{formatCurrency(Number(report?.orders?.cancelledOrderValueTnd ?? 0))}</p>
+              </div>
             </div>
 
             <div className="h-80 w-full">
@@ -110,7 +144,7 @@ export const HostReports: React.FC = () => {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                   <XAxis dataKey="name" stroke="#94A3B8" />
                   <YAxis stroke="#94A3B8" tickFormatter={(v) => `${v / 1000}k`} />
-                  <Tooltip formatter={(val: any) => [`${val.toLocaleString()} TND`, 'Volume']} />
+                  <Tooltip formatter={(val: any) => [`${val.toLocaleString()} TND`, 'Order value']} />
                   <Area type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={3} fill="url(#g1)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -123,9 +157,9 @@ export const HostReports: React.FC = () => {
             <div className="flex justify-between items-baseline mb-6">
               <div>
                 <h2 className="text-base font-bold text-navy-900">Orders Transacted</h2>
-                <p className="text-xs text-text-secondary">Monthly volume of completed part orders</p>
+                <p className="text-xs text-text-secondary">Orders created in the selected date range, including cancelled orders</p>
               </div>
-              <span className="text-sm font-extrabold text-navy-900">Total: {orders.length} Orders</span>
+              <span className="text-sm font-extrabold text-navy-900">Total: {report?.orders?.count ?? 0} Orders</span>
             </div>
 
             <div className="h-80 w-full">

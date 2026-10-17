@@ -11,23 +11,38 @@ import {
 
 export const ClientDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { currentClient, requests, orders, offers, addToast } = useStore();
+  const { currentClient, requests, orders, offers, clientDataLoadState, clientDataLoadErrors } = useStore();
 
   // Filter client's own data
   const myRequests = requests.filter(r => r.clientId === currentClient.id);
   const myOrders = orders.filter(o => o.clientId === currentClient.id);
-  const myOffers = offers.filter(o => myRequests.some(r => r.id === o.requestId));
 
-  const activeRequestsCount = myRequests.filter(r => ['published', 'offers_received', 'in_progress'].includes(r.status)).length;
-  const offersReceivedCount = myOffers.length;
+  const activeRequestsCount = myRequests.filter(r => ['published', 'offers_received', 'offer_accepted', 'in_progress'].includes(r.status)).length;
+  const offersReceivedCount = offers.filter((offer) => offer.status === 'pending').length;
   const ordersInProgressCount = myOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
   const completedOrdersCount = myOrders.filter(o => o.status === 'completed').length;
 
-  const recentRequests = myRequests.slice(0, 4);
-  const recentOrders = myOrders.slice(0, 4);
+  const requestPriority = (status: string, offersCount: number) =>
+    status === 'offers_received' || offersCount > 0 ? 0 : status === 'published' ? 1 : ['offer_accepted', 'in_progress'].includes(status) ? 2 : 3;
+  const recentRequests = [...myRequests]
+    .sort((a, b) => requestPriority(a.status, b.offersCount) - requestPriority(b.status, a.offersCount)
+      || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4);
+  const orderPriority = (status: string) => ['offer_accepted', 'seller_confirmed'].includes(status) ? 0 : status === 'completed' ? 2 : status === 'cancelled' ? 3 : 1;
+  const recentOrders = [...myOrders]
+    .sort((a, b) => orderPriority(a.status) - orderPriority(b.status)
+      || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4);
+  const dashboardValue = (resource: 'requests' | 'offers' | 'orders', value: number) => clientDataLoadState[resource] === 'ready' ? value : '—';
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+      {(['requests', 'orders', 'offers'] as const).filter((resource) => clientDataLoadState[resource] === 'error').map((resource) => (
+        <div key={resource} role="alert" className="card border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-sm text-red-800">{clientDataLoadErrors[resource] || `Your ${resource} could not be loaded.`} Successful dashboard sections remain available.</p>
+          <button onClick={() => window.location.reload()} className="btn-secondary shrink-0 text-xs">Retry</button>
+        </div>
+      ))}
       {/* Top Section: Welcome Banner & Promotional Promo Card */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Welcome Hero Banner (matching image) */}
@@ -110,7 +125,7 @@ export const ClientDashboard: React.FC = () => {
             </span>
           </div>
           <div className="mt-4 flex items-baseline justify-between">
-            <span className="text-3xl font-extrabold text-navy-900">{activeRequestsCount}</span>
+            <span className="text-3xl font-extrabold text-navy-900">{dashboardValue('requests', activeRequestsCount)}</span>
           </div>
         </div>
 
@@ -121,11 +136,11 @@ export const ClientDashboard: React.FC = () => {
               <Tag size={20} />
             </div>
             <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-              Offers Received
+              Open Offers
             </span>
           </div>
           <div className="mt-4 flex items-baseline justify-between">
-            <span className="text-3xl font-extrabold text-navy-900">{offersReceivedCount}</span>
+            <span className="text-3xl font-extrabold text-navy-900">{dashboardValue('offers', offersReceivedCount)}</span>
           </div>
         </div>
 
@@ -140,7 +155,7 @@ export const ClientDashboard: React.FC = () => {
             </span>
           </div>
           <div className="mt-4 flex items-baseline justify-between">
-            <span className="text-3xl font-extrabold text-navy-900">{ordersInProgressCount}</span>
+            <span className="text-3xl font-extrabold text-navy-900">{dashboardValue('orders', ordersInProgressCount)}</span>
           </div>
         </div>
 
@@ -155,7 +170,7 @@ export const ClientDashboard: React.FC = () => {
             </span>
           </div>
           <div className="mt-4 flex items-baseline justify-between">
-            <span className="text-3xl font-extrabold text-navy-900">{completedOrdersCount}</span>
+            <span className="text-3xl font-extrabold text-navy-900">{dashboardValue('orders', completedOrdersCount)}</span>
           </div>
         </div>
       </div>
@@ -190,7 +205,9 @@ export const ClientDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-sm">
-                  {recentRequests.map((req) => (
+                {clientDataLoadState.requests === 'loading' ? <tr><td colSpan={6} className="py-8 text-center text-sm text-text-secondary">Loading requests…</td></tr> : clientDataLoadState.requests === 'error' ? <tr><td colSpan={6} className="py-8 text-center text-sm text-red-700">Requests are unavailable. Use Retry above.</td></tr> : recentRequests.length === 0 ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-sm text-text-secondary">No part requests yet. Create your first request to get offers.</td></tr>
+                ) : recentRequests.map((req) => (
                     <tr key={req.id} className="hover:bg-surface-secondary/60 transition-colors">
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2.5">
@@ -213,7 +230,7 @@ export const ClientDashboard: React.FC = () => {
                           onClick={() => navigate(`/client/requests/${req.id}`)}
                           className="px-3 py-1 border border-border text-xs font-semibold rounded-lg text-accent hover:bg-accent-light transition-colors"
                         >
-                          View
+                          {req.status === 'offers_received' || req.offersCount > 0 ? 'Review offers' : 'View'}
                         </button>
                       </td>
                     </tr>
@@ -224,7 +241,9 @@ export const ClientDashboard: React.FC = () => {
 
             {/* Mobile Card View */}
             <div className="sm:hidden space-y-3">
-              {recentRequests.map((req) => (
+              {clientDataLoadState.requests === 'loading' ? <p className="py-8 text-center text-sm text-text-secondary">Loading requests…</p> : clientDataLoadState.requests === 'error' ? <p className="py-8 text-center text-sm text-red-700">Requests are unavailable. Use Retry above.</p> : recentRequests.length === 0 ? (
+                <p className="py-8 text-center text-sm text-text-secondary">No part requests yet. Create your first request to get offers.</p>
+              ) : recentRequests.map((req) => (
                 <div key={req.id} className="p-3 border border-border rounded-xl bg-surface-secondary/40 flex flex-col gap-2">
                   <div className="flex justify-between items-start">
                     <div>
@@ -239,7 +258,7 @@ export const ClientDashboard: React.FC = () => {
                       onClick={() => navigate(`/client/requests/${req.id}`)}
                       className="text-accent font-semibold text-xs"
                     >
-                      View Details →
+                      {req.status === 'offers_received' || req.offersCount > 0 ? 'Review offers →' : 'View Details →'}
                     </button>
                   </div>
                 </div>
@@ -260,7 +279,9 @@ export const ClientDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {recentOrders.map((order) => (
+              {clientDataLoadState.orders === 'loading' ? <p className="col-span-full py-8 text-center text-sm text-text-secondary">Loading orders…</p> : clientDataLoadState.orders === 'error' ? <p className="col-span-full py-8 text-center text-sm text-red-700">Orders are unavailable. Use Retry above.</p> : recentOrders.length === 0 ? (
+                <p className="col-span-full py-8 text-center text-sm text-text-secondary">No orders yet. Accepted offers will appear here.</p>
+              ) : recentOrders.map((order) => (
                 <div
                   key={order.id}
                   onClick={() => navigate(`/client/orders/${order.id}`)}
@@ -271,6 +292,7 @@ export const ClientDashboard: React.FC = () => {
                       <span className="text-[11px] font-bold text-navy-900">#{order.id}</span>
                       <StatusBadge status={order.status} className="scale-90 origin-right" />
                     </div>
+                    {['offer_accepted', 'seller_confirmed'].includes(order.status) && <p className="mb-1 text-[10px] font-semibold text-amber-700">Cancellation available</p>}
                     <p className="text-xs text-text-secondary truncate">{order.partName}</p>
                     <p className="text-[11px] text-text-tertiary truncate">From {order.sellerShop}</p>
                   </div>
@@ -350,7 +372,7 @@ export const ClientDashboard: React.FC = () => {
               Our marketplace support team is here to help you with any questions or order inquiries.
             </p>
             <button
-              onClick={() => addToast('info', 'Support requests are not available in the app yet.')}
+              onClick={() => navigate('/client/support')}
               className="w-full btn-secondary text-xs font-semibold py-2"
             >
               Contact Support
