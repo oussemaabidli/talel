@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../../api/client';
 import type { SparePartRequest } from '../../types';
 import { StatusBadge } from '../../components/ui';
+import { useStore } from '../../store/useStore';
+import { SellerVerificationNotice } from '../../components/SellerVerificationNotice';
 import { formatDate, formatCurrency } from '../../utils/helpers';
 import {
   ChevronLeft, Car, Box, MapPin, DollarSign, Send,
@@ -12,6 +14,7 @@ import {
 export const SellerRequestDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isSellerVerified = useStore((state) => state.isSellerVerified);
   const [request, setRequest] = useState<SparePartRequest | null>(null);
   const [myExistingOffer, setMyExistingOffer] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,15 +63,17 @@ export const SellerRequestDetail: React.FC = () => {
             <StatusBadge status={request.status} />
           </div>
 
-          <button
+          {isSellerVerified && <button
             onClick={() => navigate(`/seller/requests/${request.id}/offer`)}
             disabled={myExistingOffer || !['published', 'offers_received'].includes(request.status)}
             className="btn-primary self-start sm:self-auto flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send size={16} /> {myExistingOffer ? 'Offer Already Submitted' : 'Submit Offer Quote'}
-          </button>
+          </button>}
         </div>
       </div>
+
+      {!isSellerVerified && <SellerVerificationNotice />}
 
       {/* Details Card */}
       <div className="card p-6 sm:p-8 space-y-6">

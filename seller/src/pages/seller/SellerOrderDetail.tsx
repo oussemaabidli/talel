@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { SellerVerificationNotice } from '../../components/SellerVerificationNotice';
 import { api, ApiError } from '../../api/client';
 import { StatusBadge, ConfirmModal } from '../../components/ui';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/helpers';
@@ -15,6 +16,7 @@ export const SellerOrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const addToast = useStore((state) => state.addToast);
+  const isSellerVerified = useStore((state) => state.isSellerVerified);
   const [order, setOrder] = useState<Order | null>(null);
   const [conversation, setConversation] = useState<Conversation | undefined>();
   const [loadError, setLoadError] = useState('');
@@ -25,7 +27,7 @@ export const SellerOrderDetail: React.FC = () => {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([api.get<{ data: Record<string, unknown> }>(`/seller/orders/${id}`), api.get<{ data: Array<Record<string, unknown>> }>('/seller/conversations'), api.get<{ data: { id: string } }>('/auth/me')])
+    Promise.all([api.get<{ data: Record<string, unknown> }>(`/seller/orders/${id}`), isSellerVerified ? api.get<{ data: Array<Record<string, unknown>> }>('/seller/conversations') : Promise.resolve({ data: [] as Array<Record<string, unknown>> }), isSellerVerified ? api.get<{ data: { id: string } }>('/auth/me') : Promise.resolve({ data: { id: '' } })])
       .then(([orderResult, conversationResult, userResult]) => {
         const raw = orderResult.data;
         const offer = raw.offer as Record<string, unknown>;
@@ -44,14 +46,14 @@ export const SellerOrderDetail: React.FC = () => {
         const storeOrder = useStore.getState().orders.find((o) => o.id === id);
         if (storeOrder) {
           setOrder(storeOrder);
-          const storeConv = useStore.getState().conversations.find((c) => c.contextId === id || c.id === id);
+          const storeConv = isSellerVerified ? useStore.getState().conversations.find((c) => c.contextId === id || c.id === id) : undefined;
           setConversation(storeConv);
           setLoadError('');
         } else {
           setLoadError('Order Not Found');
         }
       }).finally(() => setLoading(false));
-  }, [id]);
+  }, [id, isSellerVerified]);
 
   if (loading) return <div className="card p-10 text-center text-sm text-text-secondary">Loading order…</div>;
   if (!order) {
@@ -67,6 +69,7 @@ export const SellerOrderDetail: React.FC = () => {
   }
 
   const handleAdvanceStatus = async (nextStatus: OrderStatus) => {
+    if (!isSellerVerified) return;
     try {
       const status = nextStatus === 'delivery' ? 'DISPATCHED' : nextStatus.toUpperCase();
       const result = await api.post<{ data: { status: string; updatedAt: string } }>(`/seller/orders/${order.id}/events`, { status });
@@ -95,6 +98,7 @@ export const SellerOrderDetail: React.FC = () => {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSellerVerified) return;
     if (!messageInput.trim()) return;
 
     if (!conversation) {
@@ -181,6 +185,8 @@ export const SellerOrderDetail: React.FC = () => {
         </div>
       </div>
 
+      {!isSellerVerified && <SellerVerificationNotice />}
+
       {/* Interactive Status Progression Action Bar */}
       <div className="card p-5 bg-gradient-to-r from-blue-50/60 to-white border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -194,6 +200,7 @@ export const SellerOrderDetail: React.FC = () => {
 
         {/* Action Buttons depending on status */}
         <div className="flex flex-wrap items-center gap-2">
+          {isSellerVerified && <>
           {order.status === 'offer_accepted' && (
             <button
               onClick={() => setConfirmStatusModal('seller_confirmed')}
@@ -244,6 +251,7 @@ export const SellerOrderDetail: React.FC = () => {
               <CheckCircle2 size={15} /> Order Successfully Completed
             </span>
           )}
+          </>}
         </div>
       </div>
 
@@ -325,6 +333,7 @@ export const SellerOrderDetail: React.FC = () => {
 
         {/* Right Column (5 cols): Contextual Order Chat */}
         <div className="lg:col-span-5 space-y-4">
+          {!isSellerVerified ? <SellerVerificationNotice /> : <>
           <div className="card p-5 flex flex-col h-[500px]">
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <div className="flex items-center gap-2">
@@ -387,6 +396,7 @@ export const SellerOrderDetail: React.FC = () => {
               </button>
             </form> : null}
           </div>
+          </>}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
+import { SellerVerificationNotice } from '../../components/SellerVerificationNotice';
 import type { PartCondition, DeliveryMethod, SparePartRequest } from '../../types';
 import { api, ApiError } from '../../api/client';
 import { formatCurrency } from '../../utils/helpers';
@@ -13,6 +14,7 @@ export const SellerCreateOffer: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const addToast = useStore((state) => state.addToast);
+  const isSellerVerified = useStore((state) => state.isSellerVerified);
   const [request, setRequest] = useState<SparePartRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -53,6 +55,7 @@ export const SellerCreateOffer: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSellerVerified) return;
 
     if (!partName.trim() || !condition || price <= 0) {
       addToast('error', 'Please specify the actual part condition and a valid quote price.');
@@ -67,6 +70,8 @@ export const SellerCreateOffer: React.FC = () => {
     } catch (error) { addToast('error', error instanceof ApiError ? error.message : 'Could not submit the offer.'); }
     finally { setBusy(false); }
   };
+
+  if (!isSellerVerified) return <div className="max-w-4xl mx-auto space-y-5"><button onClick={() => navigate(`/seller/requests/${request.id}`)} className="text-xs font-semibold text-text-secondary">← Back to Request #{request.id}</button><SellerVerificationNotice /></div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-16">

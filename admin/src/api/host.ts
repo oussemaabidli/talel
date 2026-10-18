@@ -1,6 +1,7 @@
 import type { ActivityLog, Category, Client, Offer, Order, Seller, SparePartRequest, Transaction } from '../types';
 import { useStore } from '../store/useStore';
-const configuredApiBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:4000/api/v1';
+const defaultApiHost = window.location.hostname || 'localhost';
+const configuredApiBase = import.meta.env.VITE_API_BASE_URL || `http://${defaultApiHost}:4000/api/v1`;
 const apiBaseUrl = new URL(configuredApiBase, window.location.origin);
 if (window.location.hostname === '127.0.0.1' && apiBaseUrl.hostname === 'localhost') {
   apiBaseUrl.hostname = '127.0.0.1';

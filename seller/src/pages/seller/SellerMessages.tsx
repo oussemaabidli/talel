@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { SellerVerificationNotice } from '../../components/SellerVerificationNotice';
 import { api, ApiError } from '../../api/client';
 import { Avatar } from '../../components/ui';
 import { formatTimeAgo, formatDateTime } from '../../utils/helpers';
@@ -8,6 +9,7 @@ import { MessageSquare, Send, Lock, Package, FileText } from 'lucide-react';
 
 export const SellerMessages: React.FC = () => {
   const addToast = useStore((state) => state.addToast);
+  const isSellerVerified = useStore((state) => state.isSellerVerified);
   const [sellerConversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState('');
   const [inputText, setInputText] = useState('');
@@ -34,7 +36,7 @@ export const SellerMessages: React.FC = () => {
     }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { void loadConversations(); }, [loadConversations]);
+  useEffect(() => { if (isSellerVerified) void loadConversations(); else setLoading(false); }, [isSellerVerified, loadConversations]);
 
   useEffect(() => {
     if (!activeConvId) return;
@@ -55,6 +57,8 @@ export const SellerMessages: React.FC = () => {
   }, [activeConvId, addToast]);
 
   const activeConversation = sellerConversations.find((c) => c.id === activeConvId);
+
+  if (!isSellerVerified) return <div className="max-w-6xl mx-auto space-y-5"><div><h1 className="text-2xl font-extrabold text-navy-900">Client Messages</h1><p className="text-sm text-text-secondary">Messaging becomes available after seller verification.</p></div><SellerVerificationNotice /></div>;
 
   const handleSelectConversation = (id: string) => setActiveConvId(id);
 

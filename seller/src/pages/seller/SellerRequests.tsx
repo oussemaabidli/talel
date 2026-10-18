@@ -13,6 +13,7 @@ import {
 
 export const SellerRequests: React.FC = () => {
   const navigate = useNavigate();
+  const isSellerVerified = useStore((state) => state.isSellerVerified);
   const [requests, setRequests] = useState<SparePartRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -202,12 +203,12 @@ export const SellerRequests: React.FC = () => {
                 >
                   Details
                 </button>
-                <button
+                {isSellerVerified ? <button
                   onClick={() => navigate(`/seller/requests/${req.id}/offer`)}
                   className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1"
                 >
                   <Send size={13} /> Make Offer
-                </button>
+                </button> : <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-semibold">Verification required</span>}
               </div>
             </div>
           </div>
