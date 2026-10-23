@@ -56,9 +56,10 @@ const AppRoutes: React.FC = () => {
           }
         }
       })
-      .catch(() => {
-        // A local mock session must never keep protected pages available without a server session.
-        logout();
+      .catch((error: unknown) => {
+        // Only logout on 401 (invalid/expired session). Any other error (500, network down)
+        // should not force a logout — the session may still be valid.
+        if (active && (error as { status?: number })?.status === 401) logout();
       })
       .finally(() => {
         if (active) setAuthChecked(true);

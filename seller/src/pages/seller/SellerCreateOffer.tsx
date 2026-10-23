@@ -143,6 +143,7 @@ export const SellerCreateOffer: React.FC = () => {
               <option value="" disabled>Choose actual condition</option>
               <option value="new">Brand New</option>
               <option value="used">Used / Tested Working</option>
+              <option value="either">Either (New or Used)</option>
             </select>
           </div>
         </div>

@@ -46,6 +46,10 @@ clientRouter.post('/auth/login', authLimiter, async (req, res, next) => {
 clientRouter.post('/auth/logout', async (req, res, next) => {
   try { const raw = req.signedCookies?.talel_session as string | undefined; if (raw) await prisma.session.deleteMany({ where: { tokenHash: hash(raw) } }); res.clearCookie('talel_session', { httpOnly: true, sameSite: 'strict', secure: env.NODE_ENV === 'production', path: '/' }).status(204).end(); } catch (e) { next(e); }
 });
+// Public reference endpoints accessible before and after authentication
+clientRouter.get('/categories', async (_req, res, next) => { try { res.json({ data: await prisma.marketplaceCategory.findMany({ where: { isActive: true }, select: { id: true, name: true, description: true, icon: true }, orderBy: { name: 'asc' } }) }); } catch (e) { next(e); } });
+clientRouter.get('/governorates', (_req, res) => res.json({ data: TUNISIAN_GOVERNORATES }));
+
 clientRouter.use(requireClient);
 const clientId = (req: import('express').Request) => req.clientId!;
 clientRouter.post('/support/conversation', communicationLimiter, async (req, res, next) => {
@@ -266,7 +270,7 @@ clientRouter.post('/offers/:offerId/accept', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-clientRouter.get('/orders', async (req, res, next) => { try { const data = await prisma.order.findMany({ where: { request: { clientId: id(req) } }, include: { offer: true, seller: { select: { id: true, profile: { select: { shopName: true } } } }, request: { select: { partName: true, location: true, deliveryMethod: true, quantity: true } }, events: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } }); res.json({ data }); } catch (e) { next(e); } });
+clientRouter.get('/orders', async (req, res, next) => { try { const data = await prisma.order.findMany({ where: { request: { clientId: id(req) } }, include: { offer: true, seller: { select: { id: true, profile: { select: { shopName: true } } } }, request: { select: { partName: true, location: true, deliveryMethod: true, quantity: true, governorate: true } }, events: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } }); res.json({ data }); } catch (e) { next(e); } });
 clientRouter.get('/orders/:orderId', async (req, res, next) => { try { const data = await prisma.order.findFirst({ where: { id: String(req.params.orderId), request: { clientId: id(req) } }, include: { offer: true, seller: { select: { id: true, profile: { select: { shopName: true, city: true } } } }, request: true, events: { orderBy: { createdAt: 'asc' } } } }); if (!data) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Order not found.' } }); res.json({ data }); } catch (e) { next(e); } });
 clientRouter.post('/orders/:orderId/cancel', async (req, res, next) => {
   try {

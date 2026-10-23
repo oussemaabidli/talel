@@ -6,16 +6,43 @@ export class ApiError extends Error {
   constructor(message: string, status: number, code?: string) { super(message); this.status = status; this.code = code; }
 }
 
+// In-flight request deduplication map to prevent accidental infinite query storms
+const activeGetRequests = new Map<string, Promise<any>>();
+
 export async function clientApi<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${CLIENT_API_BASE}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: { ...(options.body && !(options.body instanceof Blob) ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
-  });
-  if (response.status === 204) return undefined as T;
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(payload?.error?.message ?? 'The request failed.', response.status, payload?.error?.code);
-  return payload.data as T;
+  const method = (options.method || 'GET').toUpperCase();
+
+  // Deduplicate concurrent GET requests to the exact same path
+  if (method === 'GET') {
+    const existing = activeGetRequests.get(path);
+    if (existing) return existing as Promise<T>;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const response = await fetch(`${CLIENT_API_BASE}${path}`, {
+        ...options,
+        credentials: 'include',
+        headers: { ...(options.body && !(options.body instanceof Blob) ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
+      });
+      if (response.status === 204) return undefined as T;
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new ApiError(payload?.error?.message ?? 'The request failed.', response.status, payload?.error?.code);
+      }
+      return payload.data as T;
+    } finally {
+      if (method === 'GET') {
+        activeGetRequests.delete(path);
+      }
+    }
+  })();
+
+  if (method === 'GET') {
+    activeGetRequests.set(path, fetchPromise);
+  }
+
+  return fetchPromise;
 }
 
 export async function clientApiBlob(path: string): Promise<Blob> {

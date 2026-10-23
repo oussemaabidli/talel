@@ -2,13 +2,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { z, ZodError } from 'zod';
+import { z } from 'zod';
 import { OfferStatus, OrderStatus, Prisma, RequestStatus } from '@prisma/client';
 import { prisma } from '../db.js';
 import { env } from '../config/env.js';
 import { requireHost } from '../middleware/auth.js';
 import { readPrivateDocument } from '../documents/storage.js';
 import { sellerDocumentsMeetPolicy } from '../documents/policy.js';
+import { invalidateContactPolicyCache } from '../messaging/contactPolicy.js';
 
 export const hostRouter = express.Router();
 const emailSchema = z.string().trim().email().max(254).transform((value) => value.toLowerCase());
@@ -385,6 +386,9 @@ hostRouter.patch('/settings/:key', async (req, res, next) => {
       await tx.hostAuditLog.create({ data: { actorId: hostId(req), action: 'SETTING_UPDATED', entityType: 'setting', entityId: key, details: { value } as Prisma.InputJsonValue } });
       return setting;
     });
+    if (key === 'restrictDirectContact') {
+      invalidateContactPolicyCache();
+    }
     res.json({ data });
   } catch (error) { next(error); }
 });

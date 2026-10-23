@@ -3,12 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "dev:seller": "npm --prefix seller run dev",
     "dev:admin": "npm --prefix admin run dev",
+    "build:server": "npm --prefix server run build",
     "build:client": "npm --prefix client run build",
     "build:seller": "npm --prefix seller run build",
-    "build:admin": "npm --prefix admin run build"
+    "build:admin": "npm --prefix admin run build",
+    "db:migrate": "npm --prefix server run db:migrate",
+    "db:seed": "npm --prefix server run db:seed",
+    "db:deploy": "npm --prefix server run db:deploy"
   }
 }
 

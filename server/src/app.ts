@@ -25,6 +25,18 @@ app.use(cors({ origin(origin, callback) {
 }, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser(env.COOKIE_SECRET));
+app.get('/', (_req, res) => res.json({
+  name: 'Talel Shared API Server',
+  status: 'online',
+  version: '1.0.0',
+  documentation: '/api/v1/openapi.json',
+  health: '/health/ready',
+  portals: {
+    client: 'http://localhost:3001',
+    seller: 'http://localhost:3002',
+    admin: 'http://localhost:3003',
+  },
+}));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/health/ready', async (_req, res) => {
   try { await prisma.$queryRaw`SELECT 1`; res.json({ status: 'ready', database: 'connected' }); }
@@ -216,7 +228,62 @@ api.get('/seller/orders', async (req, res, next) => { try { res.json({ data: awa
 api.get('/seller/orders/:id', async (req, res, next) => { try { const data = await prisma.order.findFirst({ where: { id: String(req.params.id), sellerId: sellerId(req) }, include: { offer: true, request: true, events: { orderBy: { createdAt: 'asc' } } } }); if (!data) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Order not found.' } }); res.json({ data }); } catch (error) { next(error); } });
 api.post('/seller/orders/:id/events', requireApprovedSeller, async (req, res, next) => { try { const { status } = z.object({ status: z.nativeEnum(OrderStatus) }).parse(req.body); const result = await prisma.$transaction(async (tx) => { const order = await tx.order.findFirst({ where: { id: String(req.params.id), sellerId: sellerId(req) }, include: { request: { select: { id: true, clientId: true, partName: true } } } }); if (!order) return null; if (!sellerOrderTransitions[order.status]?.includes(status)) throw new Error('INVALID_ORDER_TRANSITION'); const changed = await tx.order.updateMany({ where: { id: order.id, status: order.status }, data: { status } }); if (!changed.count) throw Object.assign(new Error('Another operation changed this order.'), { code: 'ORDER_CONCURRENT_MODIFICATION' }); const updated = await tx.order.findUniqueOrThrow({ where: { id: order.id } }); await tx.orderEvent.create({ data: { orderId: order.id, status } }); if (status === OrderStatus.PREPARING) { const competitors = await tx.offer.findMany({ where: { requestId: order.requestId, id: { not: order.offerId }, status: OfferStatus.PENDING }, select: { id: true, sellerId: true, partName: true } }); if (competitors.length) { await tx.offer.updateMany({ where: { id: { in: competitors.map((offer) => offer.id) }, status: OfferStatus.PENDING }, data: { status: OfferStatus.REJECTED } }); await tx.notification.createMany({ data: competitors.map((offer) => ({ userId: offer.sellerId, type: 'offer_closed', title: 'Request fulfilled', message: `The client moved forward with another offer for ${offer.partName}.`, link: `/seller/offers/${offer.id}` })) }); } await tx.marketplaceRequest.update({ where: { id: order.requestId }, data: { status: RequestStatus.IN_PROGRESS } }); } if (status === OrderStatus.COMPLETED) await tx.marketplaceRequest.update({ where: { id: order.requestId }, data: { status: RequestStatus.COMPLETED } }); if (order.request.clientId) { const updates: Record<string, { title: string; message: string; type: string }> = { SELLER_CONFIRMED: { type: 'order_confirmed', title: 'Seller confirmed your order', message: `The seller confirmed your order for ${order.request.partName}.` }, PREPARING: { type: 'order_preparing', title: 'Order preparation started', message: `The seller started preparing ${order.request.partName}.` }, READY: { type: 'order_ready', title: 'Your order is ready', message: `${order.request.partName} is ready for delivery or pickup.` }, DISPATCHED: { type: 'order_shipped', title: 'Your order was dispatched', message: `${order.request.partName} has been dispatched.` }, COMPLETED: { type: 'order_completed', title: 'Order completed', message: `The seller marked ${order.request.partName} as completed.` } }; const notification = updates[status]; if (notification) await tx.notification.create({ data: { userId: order.request.clientId, ...notification, link: `/client/orders/${order.id}` } }); } return updated; }); if (!result) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Order not found.' } }); res.json({ data: result }); } catch (error) { next(error); } });
 
-api.get('/seller/dashboard', async (req, res, next) => { try { const id = sellerId(req); const [activeRequests, pendingOffers, inProgressOrders, completedOrders, completed, lowStock, recentRequests, recentOrders, profile] = await Promise.all([prisma.marketplaceRequest.count({ where: { status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } } }), prisma.offer.count({ where: { sellerId: id, status: OfferStatus.PENDING } }), prisma.order.count({ where: { sellerId: id, status: { in: [OrderStatus.OFFER_ACCEPTED, OrderStatus.SELLER_CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.DISPATCHED] } } }), prisma.order.count({ where: { sellerId: id, status: OrderStatus.COMPLETED } }), prisma.order.aggregate({ where: { sellerId: id, status: OrderStatus.COMPLETED }, _sum: { totalAmount: true } }), prisma.$queryRaw<Array<InventoryPart>>`SELECT * FROM "InventoryPart" WHERE "sellerId" = ${id} AND "isActive" = true AND "stock" <= "minimumStock" ORDER BY "stock" ASC LIMIT 10`, prisma.marketplaceRequest.findMany({ where: { status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } }, select: requestPublicFields, orderBy: { createdAt: 'desc' }, take: 5 }), prisma.order.findMany({ where: { sellerId: id, status: { not: OrderStatus.CANCELLED } }, select: { id: true, status: true, totalAmount: true, createdAt: true, offer: { select: { partName: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }), prisma.sellerProfile.findUnique({ where: { userId: id }, select: { shopName: true } })]); res.json({ data: { activeRequests, pendingOffers, inProgressOrders, completedOrders, completedRevenueTnd: completed._sum.totalAmount?.toString() ?? '0', averageResponseTimeHours: null, lowStock, recentRequests, recentOrders, profile } }); } catch (error) { next(error); } });
+api.get('/seller/dashboard', async (req, res, next) => {
+  try {
+    const id = sellerId(req);
+    const [
+      activeRequests,
+      pendingOffers,
+      inProgressOrders,
+      completedOrders,
+      completed,
+      lowStock,
+      recentRequests,
+      recentOrders,
+      profile,
+      sellerOffersForAvg,
+    ] = await Promise.all([
+      prisma.marketplaceRequest.count({ where: { status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } } }),
+      prisma.offer.count({ where: { sellerId: id, status: OfferStatus.PENDING } }),
+      prisma.order.count({ where: { sellerId: id, status: { in: [OrderStatus.OFFER_ACCEPTED, OrderStatus.SELLER_CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.DISPATCHED] } } }),
+      prisma.order.count({ where: { sellerId: id, status: OrderStatus.COMPLETED } }),
+      prisma.order.aggregate({ where: { sellerId: id, status: OrderStatus.COMPLETED }, _sum: { totalAmount: true } }),
+      prisma.$queryRaw<Array<InventoryPart>>`SELECT * FROM "InventoryPart" WHERE "sellerId" = ${id} AND "isActive" = true AND "stock" <= "minimumStock" ORDER BY "stock" ASC LIMIT 10`,
+      prisma.marketplaceRequest.findMany({ where: { status: { in: [RequestStatus.PUBLISHED, RequestStatus.OFFERS_RECEIVED] } }, select: requestPublicFields, orderBy: { createdAt: 'desc' }, take: 5 }),
+      prisma.order.findMany({ where: { sellerId: id, status: { not: OrderStatus.CANCELLED } }, select: { id: true, status: true, totalAmount: true, createdAt: true, offer: { select: { partName: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }),
+      prisma.sellerProfile.findUnique({ where: { userId: id }, select: { shopName: true } }),
+      prisma.offer.findMany({ where: { sellerId: id }, select: { createdAt: true, request: { select: { createdAt: true } } }, take: 100, orderBy: { createdAt: 'desc' } }),
+    ]);
+
+    let totalDiffMs = 0;
+    let validCount = 0;
+    for (const off of sellerOffersForAvg) {
+      if (off.request?.createdAt) {
+        const diff = off.createdAt.getTime() - off.request.createdAt.getTime();
+        if (diff >= 0) {
+          totalDiffMs += diff;
+          validCount++;
+        }
+      }
+    }
+    const averageResponseTimeHours = validCount > 0 ? Math.round((totalDiffMs / (validCount * 3600000)) * 10) / 10 : null;
+
+    res.json({
+      data: {
+        activeRequests,
+        pendingOffers,
+        inProgressOrders,
+        completedOrders,
+        completedRevenueTnd: completed._sum.totalAmount?.toString() ?? '0',
+        averageResponseTimeHours,
+        lowStock,
+        recentRequests,
+        recentOrders,
+        profile,
+      },
+    });
+  } catch (error) { next(error); }
+});
 api.get('/seller/sales', async (req, res, next) => { try { const from = z.coerce.date().optional().parse(req.query.from); const to = z.coerce.date().optional().parse(req.query.to); const where = { sellerId: sellerId(req), status: OrderStatus.COMPLETED, ...(from || to ? { updatedAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}) }; const [count, aggregate, rows] = await Promise.all([prisma.order.count({ where }), prisma.order.aggregate({ where, _sum: { totalAmount: true }, _avg: { totalAmount: true } }), prisma.order.findMany({ where, select: { id: true, totalAmount: true, updatedAt: true, offer: { select: { partName: true } } }, orderBy: { updatedAt: 'desc' }, take: 500 })]); res.json({ data: { completedSales: count, revenueTnd: aggregate._sum.totalAmount?.toString() ?? '0', averageOrderValueTnd: aggregate._avg.totalAmount?.toString() ?? '0', history: rows } }); } catch (error) { next(error); } });
 
 api.get('/seller/profile', async (req, res, next) => { try { res.json({ data: await prisma.sellerProfile.findUnique({ where: { userId: sellerId(req) }, include: { user: { select: { email: true, phone: true } } } }) }); } catch (error) { next(error); } });
